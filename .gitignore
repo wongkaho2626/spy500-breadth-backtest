@@ -1,0 +1,8 @@
+# Generated charts
+*.png
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
