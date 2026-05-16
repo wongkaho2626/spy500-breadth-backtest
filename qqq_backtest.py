@@ -17,6 +17,7 @@ DIVERGENCE_BREADTH_FALL = 20.0
 DIVERGENCE_BREADTH_CAP  = 60.0
 MIN_HOLD_DAYS           = 5      # bearish-div sell not eligible until this many days after entry
 HARD_STOP_PCT           = 20.0   # hard stop-loss: exit if trade drawdown exceeds this %
+STOP_COOLDOWN_DAYS      = 45     # after a hard-stop, wait this many days before next entry
 INITIAL_CAPITAL         = 10_000.0
 COMMISSION              = 1.0
 SLIPPAGE                = 0.0005
@@ -66,21 +67,23 @@ def _days_str(days: int) -> str:
 
 
 def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
-    position   = "OUT"
-    eff_entry  = raw_entry = 0.0
-    entry_date = None
-    trade_high = trade_low = 0.0
-    portfolio  = INITIAL_CAPITAL
+    position       = "OUT"
+    eff_entry      = raw_entry = 0.0
+    entry_date     = None
+    trade_high     = trade_low = 0.0
+    portfolio      = INITIAL_CAPITAL
     trades: list[dict] = []
-    values: dict = {}
+    values: dict   = {}
+    cooldown_until = None
 
     for date, row in df.iterrows():
         price       = row["qqq_price"]
         breadth     = row["breadth"]
         b50         = row["b50"]
         bearish_div = bool(row["bearish_div"])
+        in_cooldown = cooldown_until is not None and date <= cooldown_until
 
-        if position == "OUT" and breadth < BUY_THRESHOLD and b50 < BUY_50_THRESHOLD:
+        if position == "OUT" and not in_cooldown and breadth < BUY_THRESHOLD and b50 < BUY_50_THRESHOLD:
             portfolio -= COMMISSION
             eff_entry  = price * (1 + SLIPPAGE)
             raw_entry  = price
@@ -112,6 +115,8 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                     "accumulated":      portfolio,
                     "sell_reason":      sell_reason,
                 })
+                if sell_reason == "hard-stop":
+                    cooldown_until = date + pd.Timedelta(days=STOP_COOLDOWN_DAYS)
                 position = "OUT"
 
         if position == "IN":
@@ -220,9 +225,9 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
         gridspec_kw={"height_ratios": [3, 1]}
     )
     fig.suptitle(
-        f"QQQ: Breadth Strategy + Hard Stop\n"
+        f"QQQ: Breadth Strategy + Hard Stop + Cooldown\n"
         f"Buy: breadth200<{BUY_THRESHOLD} AND breadth50<{BUY_50_THRESHOLD}  |  "
-        f"Sell: hard-stop -{HARD_STOP_PCT}% OR bearish-div (QQQ+{DIVERGENCE_PRICE_RISE}% & breadth200↓{DIVERGENCE_BREADTH_FALL}pts & breadth200<{DIVERGENCE_BREADTH_CAP}) min hold {MIN_HOLD_DAYS}d\n"
+        f"Sell: hard-stop -{HARD_STOP_PCT}% ({STOP_COOLDOWN_DAYS}d cooldown) OR bearish-div (QQQ+{DIVERGENCE_PRICE_RISE}% & breadth200↓{DIVERGENCE_BREADTH_FALL}pts & breadth200<{DIVERGENCE_BREADTH_CAP}) min hold {MIN_HOLD_DAYS}d\n"
         f"Starting capital: ${INITIAL_CAPITAL:,.0f}",
         fontsize=11, fontweight="bold"
     )
@@ -284,7 +289,7 @@ def main() -> None:
     print(f"Date range : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
     print(
         f"Strategy   : buy breadth200<{BUY_THRESHOLD} AND breadth50<{BUY_50_THRESHOLD} | "
-        f"sell hard-stop -{HARD_STOP_PCT}% OR bearish-div (window={DIVERGENCE_WINDOW}d, QQQ+{DIVERGENCE_PRICE_RISE}%, "
+        f"sell hard-stop -{HARD_STOP_PCT}% ({STOP_COOLDOWN_DAYS}d cooldown) OR bearish-div (window={DIVERGENCE_WINDOW}d, QQQ+{DIVERGENCE_PRICE_RISE}%, "
         f"breadth200↓≥{DIVERGENCE_BREADTH_FALL}pts, cap<{DIVERGENCE_BREADTH_CAP}, min hold {MIN_HOLD_DAYS}d)"
     )
     print(f"Costs      : ${COMMISSION:.0f} commission per side + {SLIPPAGE*100:.2f}% slippage per side")
