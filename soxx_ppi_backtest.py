@@ -18,7 +18,7 @@ DIVERGENCE_BREADTH_FALL = 20.0
 DIVERGENCE_BREADTH_CAP  = 50.0
 
 PPI_BUY_MAX  = 4.0   # % yoy — skip breadth-panic buy if PPI is above this
-PPI_SELL_MIN = 2.5   # % yoy — bearish div only fires as exit when PPI >= this
+PPI_SELL_MIN = 0.0   # % yoy — bearish div fires regardless of PPI level (buy gate does the work)
 
 INITIAL_CAPITAL = 10_000.0
 COMMISSION      = 1.0
