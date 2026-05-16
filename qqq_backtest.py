@@ -16,6 +16,7 @@ DIVERGENCE_PRICE_RISE   = 3.0
 DIVERGENCE_BREADTH_FALL = 20.0
 DIVERGENCE_BREADTH_CAP  = 60.0
 MIN_HOLD_DAYS           = 5      # bearish-div sell not eligible until this many days after entry
+HARD_STOP_PCT           = 20.0   # hard stop-loss: exit if trade drawdown exceeds this %
 INITIAL_CAPITAL         = 10_000.0
 COMMISSION              = 1.0
 SLIPPAGE                = 0.0005
@@ -90,8 +91,11 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
             trade_high = max(trade_high, price)
             trade_low  = min(trade_low, price)
             hold_days  = (date - entry_date).days
+            drawdown_pct = (price - raw_entry) / raw_entry * 100
             sell_reason = None
-            if bearish_div and hold_days >= MIN_HOLD_DAYS:
+            if drawdown_pct <= -HARD_STOP_PCT:
+                sell_reason = "hard-stop"
+            elif bearish_div and hold_days >= MIN_HOLD_DAYS:
                 sell_reason = "bearish-divergence"
             if sell_reason:
                 eff_exit  = price * (1 - SLIPPAGE)
@@ -216,9 +220,9 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
         gridspec_kw={"height_ratios": [3, 1]}
     )
     fig.suptitle(
-        f"QQQ: Breadth Strategy\n"
+        f"QQQ: Breadth Strategy + Hard Stop\n"
         f"Buy: breadth200<{BUY_THRESHOLD} AND breadth50<{BUY_50_THRESHOLD}  |  "
-        f"Sell: bearish-div (QQQ+{DIVERGENCE_PRICE_RISE}% & breadth200↓{DIVERGENCE_BREADTH_FALL}pts & breadth200<{DIVERGENCE_BREADTH_CAP}) min hold {MIN_HOLD_DAYS}d\n"
+        f"Sell: hard-stop -{HARD_STOP_PCT}% OR bearish-div (QQQ+{DIVERGENCE_PRICE_RISE}% & breadth200↓{DIVERGENCE_BREADTH_FALL}pts & breadth200<{DIVERGENCE_BREADTH_CAP}) min hold {MIN_HOLD_DAYS}d\n"
         f"Starting capital: ${INITIAL_CAPITAL:,.0f}",
         fontsize=11, fontweight="bold"
     )
@@ -280,7 +284,7 @@ def main() -> None:
     print(f"Date range : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
     print(
         f"Strategy   : buy breadth200<{BUY_THRESHOLD} AND breadth50<{BUY_50_THRESHOLD} | "
-        f"sell bearish-divergence (window={DIVERGENCE_WINDOW}d, QQQ+{DIVERGENCE_PRICE_RISE}%, "
+        f"sell hard-stop -{HARD_STOP_PCT}% OR bearish-div (window={DIVERGENCE_WINDOW}d, QQQ+{DIVERGENCE_PRICE_RISE}%, "
         f"breadth200↓≥{DIVERGENCE_BREADTH_FALL}pts, cap<{DIVERGENCE_BREADTH_CAP}, min hold {MIN_HOLD_DAYS}d)"
     )
     print(f"Costs      : ${COMMISSION:.0f} commission per side + {SLIPPAGE*100:.2f}% slippage per side")
