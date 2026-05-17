@@ -8,13 +8,18 @@ DATA_DIR     = Path(__file__).parent
 SPY_FILE     = DATA_DIR / "SPY.csv"
 BREADTH_FILE = DATA_DIR / "S&P 500 Stocks Above 200-Day Average Historical Data.csv"
 B50_FILE     = DATA_DIR / "S&P 500 Stocks Above 50-Day Average Historical Data.csv"
+CAPE_FILE    = DATA_DIR / "ShillerPE.csv"
 
 BUY_THRESHOLD           = 18.0
 BUY_50_THRESHOLD        = 25.0
 DIVERGENCE_WINDOW       = 100
 DIVERGENCE_PRICE_RISE   = 1.0
 DIVERGENCE_BREADTH_FALL = 20.0
-DIVERGENCE_BREADTH_CAP  = 55.0
+DIVERGENCE_BREADTH_CAP  = 55.0   # base cap when CAPE is normal
+CAPE_HIGH               = 32.0   # CAPE above this → tighter sell cap
+CAP_HIGH_PE             = 52.0   # breadth cap when CAPE >= CAPE_HIGH
+CAPE_VERY_HIGH          = 38.0   # CAPE above this → even tighter sell cap
+CAP_VERY_HIGH_PE        = 35.0   # breadth cap when CAPE >= CAPE_VERY_HIGH
 INITIAL_CAPITAL         = 10_000.0
 COMMISSION              = 1.0
 SLIPPAGE                = 0.0005
@@ -37,18 +42,29 @@ def load_data() -> pd.DataFrame:
         df.set_index("Date", inplace=True)
         df["Price"] = _parse_price(df["Price"])
 
+    cape_raw = pd.read_csv(CAPE_FILE)
+    cape_raw["Date"] = pd.to_datetime(cape_raw["date"], format="%Y-%m-%d")
+    cape_raw.set_index("Date", inplace=True)
+    cape_raw = cape_raw.rename(columns={"close": "cape"})
+
     merged = spy_raw[["spy_price"]].join(
         breadth_raw[["Price"]].rename(columns={"Price": "breadth"}), how="inner"
     )
     merged = merged.join(b50_raw[["Price"]].rename(columns={"Price": "b50"}), how="inner")
+    merged = merged.join(cape_raw[["cape"]], how="left")
+    merged["cape"] = merged["cape"].ffill()
     merged.sort_index(inplace=True)
 
+    # PE-tiered divergence cap: tighter exits when market is overvalued
+    div_cap = merged["cape"].apply(
+        lambda c: CAP_VERY_HIGH_PE if c >= CAPE_VERY_HIGH else (CAP_HIGH_PE if c >= CAPE_HIGH else DIVERGENCE_BREADTH_CAP)
+    )
     price_past   = merged["spy_price"].shift(DIVERGENCE_WINDOW)
     breadth_past = merged["breadth"].shift(DIVERGENCE_WINDOW)
     merged["bearish_div"] = (
         ((merged["spy_price"] - price_past) / price_past * 100 >= DIVERGENCE_PRICE_RISE) &
         ((breadth_past - merged["breadth"]) >= DIVERGENCE_BREADTH_FALL) &
-        (merged["breadth"] < DIVERGENCE_BREADTH_CAP)
+        (merged["breadth"] < div_cap)
     )
     return merged
 
@@ -207,14 +223,14 @@ def print_trades(trades: list[dict], open_trade: dict | None = None) -> None:
 
 
 def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
-    fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(14, 9), sharex=True,
-        gridspec_kw={"height_ratios": [3, 1]}
+    fig, (ax1, ax2, ax3) = plt.subplots(
+        3, 1, figsize=(14, 11), sharex=True,
+        gridspec_kw={"height_ratios": [3, 1.2, 0.8]}
     )
     fig.suptitle(
-        f"SPY: Breadth Strategy\n"
+        f"SPY: Breadth + CAPE Strategy\n"
         f"Buy: breadth200<{BUY_THRESHOLD} AND breadth50<{BUY_50_THRESHOLD}  |  "
-        f"Sell: SPY+{DIVERGENCE_PRICE_RISE}% & breadth200↓{DIVERGENCE_BREADTH_FALL}pts & breadth200<{DIVERGENCE_BREADTH_CAP}\n"
+        f"Sell cap: {DIVERGENCE_BREADTH_CAP} (CAPE<{CAPE_HIGH}) / {CAP_HIGH_PE} (CAPE {CAPE_HIGH}–{CAPE_VERY_HIGH}) / {CAP_VERY_HIGH_PE} (CAPE>{CAPE_VERY_HIGH})\n"
         f"Starting capital: ${INITIAL_CAPITAL:,.0f}",
         fontsize=11, fontweight="bold"
     )
@@ -256,12 +272,26 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
         ax2.scatter(exit_dates, df["breadth"].reindex(exit_dates, method="nearest"),
                     marker="v", color="red", s=60, zorder=5)
 
-    ax2.set_ylabel("% Stocks Above 200-MA")
-    ax2.set_xlabel("Date")
+    ax2.set_ylabel("% Stocks Above MA")
     ax2.legend(loc="upper left", fontsize=8)
     ax2.grid(True, alpha=0.3)
-    ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-    ax2.xaxis.set_major_locator(mdates.YearLocator(2))
+
+    ax3.plot(df.index, df["cape"], color="#E65100", linewidth=1.2, label="Shiller PE (CAPE)")
+    ax3.axhline(CAPE_HIGH,      color="orange", linestyle="--", linewidth=1.0,
+                label=f"High PE: {CAPE_HIGH}")
+    ax3.axhline(CAPE_VERY_HIGH, color="red",    linestyle="--", linewidth=1.0,
+                label=f"Very High PE: {CAPE_VERY_HIGH}")
+    ax3.fill_between(df.index, df["cape"], CAPE_VERY_HIGH,
+                     where=df["cape"] >= CAPE_VERY_HIGH, color="red", alpha=0.12)
+    ax3.fill_between(df.index, df["cape"], CAPE_HIGH,
+                     where=(df["cape"] >= CAPE_HIGH) & (df["cape"] < CAPE_VERY_HIGH),
+                     color="orange", alpha=0.10)
+    ax3.set_ylabel("CAPE")
+    ax3.set_xlabel("Date")
+    ax3.legend(loc="upper left", fontsize=8)
+    ax3.grid(True, alpha=0.3)
+    ax3.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    ax3.xaxis.set_major_locator(mdates.YearLocator(2))
     fig.autofmt_xdate()
 
     out_path = DATA_DIR / "spy_performance.png"
@@ -274,10 +304,23 @@ def main() -> None:
     print("Loading data...")
     df = load_data()
     print(f"Date range : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
+    current_cape = df["cape"].iloc[-1]
+    if current_cape >= CAPE_VERY_HIGH:
+        active_cap = CAP_VERY_HIGH_PE
+        cape_tier  = f"VERY HIGH (>{CAPE_VERY_HIGH})"
+    elif current_cape >= CAPE_HIGH:
+        active_cap = CAP_HIGH_PE
+        cape_tier  = f"HIGH ({CAPE_HIGH}–{CAPE_VERY_HIGH})"
+    else:
+        active_cap = DIVERGENCE_BREADTH_CAP
+        cape_tier  = f"normal (<{CAPE_HIGH})"
     print(
         f"Strategy   : buy breadth200<{BUY_THRESHOLD} AND breadth50<{BUY_50_THRESHOLD} | sell bearish-divergence "
         f"(window={DIVERGENCE_WINDOW}d, SPY+{DIVERGENCE_PRICE_RISE}%, "
-        f"breadth200↓≥{DIVERGENCE_BREADTH_FALL}pts, cap<{DIVERGENCE_BREADTH_CAP})"
+        f"breadth200↓≥{DIVERGENCE_BREADTH_FALL}pts)"
+    )
+    print(
+        f"CAPE       : {current_cape:.1f} [{cape_tier}] → active sell cap = breadth200 < {active_cap}"
     )
     print(f"Costs      : ${COMMISSION:.0f} commission per side + {SLIPPAGE*100:.2f}% slippage per side")
 
