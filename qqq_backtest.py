@@ -1,3 +1,11 @@
+"""
+NASDAQ 100 Hybrid Backtest 1987 – present
+
+Phase 1 (1987–2006): CAPE-only strategy — buy when CAPE is cheap,
+  sell when CAPE recovers to overvalued territory.
+Phase 2 (2007+): Full breadth + CAPE strategy using S&P 500 breadth
+  as market-wide proxy, with 2-tier CAPE-adjusted divergence cap.
+"""
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -5,58 +13,85 @@ import matplotlib.dates as mdates
 from pathlib import Path
 
 DATA_DIR     = Path(__file__).parent
-QQQ_FILE     = DATA_DIR / "QQQ ETF Stock Price History.csv"
+NDX_FILE     = DATA_DIR / "NASDAQ100.csv"
 BREADTH_FILE = DATA_DIR / "S&P 500 Stocks Above 200-Day Average Historical Data.csv"
 B50_FILE     = DATA_DIR / "S&P 500 Stocks Above 50-Day Average Historical Data.csv"
+CAPE_FILE    = DATA_DIR / "ShillerPE.csv"
 
-BUY_THRESHOLD           = 26.0
-BUY_50_THRESHOLD        = 25.0   # also require 50-day breadth below this to confirm panic
-DIVERGENCE_WINDOW       = 60
-DIVERGENCE_PRICE_RISE   = 3.0
-DIVERGENCE_BREADTH_FALL = 20.0
-DIVERGENCE_BREADTH_CAP  = 60.0
-MIN_HOLD_DAYS           = 5      # bearish-div sell not eligible until this many days after entry
-HARD_STOP_PCT           = 20.0   # hard stop-loss: exit if trade drawdown exceeds this %
-STOP_COOLDOWN_DAYS      = 45     # after a hard-stop, wait this many days before next entry
-INITIAL_CAPITAL         = 10_000.0
-COMMISSION              = 1.0
-SLIPPAGE                = 0.0005
+# ── Phase 1: CAPE-only (pre-2007) ────────────────────────────────────────────
+CAPE_BUY_ABS  = 22.0
+CAPE_SELL_ABS = 30.0
+
+# ── Phase 2: Breadth + CAPE (2007+) ──────────────────────────────────────────
+BUY_THRESHOLD           = 18.0
+BUY_50_THRESHOLD        = 25.0
+BUY_THRESH_HI_CAPE      = 12.0   # tighter when CAPE is elevated
+CAPE_BUY_HIGH           = 28.0   # CAPE above this → use BUY_THRESH_HI_CAPE
+DIVERGENCE_WINDOW       = 100
+DIVERGENCE_PRICE_RISE   = 1.0
+DIVERGENCE_BREADTH_FALL = 25.0   # tighter than S&P (20→25) — NASDAQ needs stronger breadth deterioration
+DIVERGENCE_BREADTH_CAP  = 55.0   # sell cap when CAPE < CAPE_EXPENSIVE
+CAPE_EXPENSIVE          = 32.0   # above this → tighter sell cap (higher than S&P's 30)
+CAP_EXPENSIVE           = 40.0   # sell cap when CAPE >= CAPE_EXPENSIVE (tighter than S&P's 45)
+
+# ── Shared ────────────────────────────────────────────────────────────────────
+INITIAL_CAPITAL = 10_000.0
+COMMISSION      = 1.0
+SLIPPAGE        = 0.0005
+BREADTH_START   = pd.Timestamp("2007-01-02")
 
 
-def _parse_price(series: pd.Series) -> pd.Series:
-    return series.astype(str).str.replace(",", "").astype(float)
+def _parse_price(s: pd.Series) -> pd.Series:
+    return s.astype(str).str.replace(",", "").astype(float)
 
 
 def load_data() -> pd.DataFrame:
-    qqq_raw     = pd.read_csv(QQQ_FILE)
-    breadth_raw = pd.read_csv(BREADTH_FILE)
-    b50_raw     = pd.read_csv(B50_FILE)
+    ndx = pd.read_csv(NDX_FILE)
+    ndx["Date"] = pd.to_datetime(ndx["date"], format="%Y-%m-%d")
+    ndx.set_index("Date", inplace=True)
+    ndx = ndx.rename(columns={"close": "price"})
+    ndx["price"] = ndx["price"].astype(float)
 
-    for df in (qqq_raw, breadth_raw, b50_raw):
-        df["Date"] = pd.to_datetime(df["Date"], format="%m/%d/%Y")
-        df.set_index("Date", inplace=True)
-        df["Price"] = _parse_price(df["Price"])
+    b200 = pd.read_csv(BREADTH_FILE)
+    b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
+    b200.set_index("Date", inplace=True)
+    b200["Price"] = _parse_price(b200["Price"])
 
-    merged = qqq_raw[["Price"]].join(
-        breadth_raw[["Price"]], lsuffix="_qqq", rsuffix="_breadth", how="inner"
+    b50 = pd.read_csv(B50_FILE)
+    b50["Date"] = pd.to_datetime(b50["Date"], format="%m/%d/%Y")
+    b50.set_index("Date", inplace=True)
+    b50["Price"] = _parse_price(b50["Price"])
+
+    cape = pd.read_csv(CAPE_FILE)
+    cape["Date"] = pd.to_datetime(cape["date"], format="%Y-%m-%d")
+    cape.set_index("Date", inplace=True)
+    cape = cape.rename(columns={"close": "cape"})
+
+    merged = ndx[["price"]].join(
+        b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"
     )
-    merged = merged.rename(columns={"Price_qqq": "qqq_price", "Price_breadth": "breadth"})
-    merged = merged.join(b50_raw[["Price"]].rename(columns={"Price": "b50"}), how="inner")
+    merged = merged.join(b50[["Price"]].rename(columns={"Price": "b50"}), how="left")
+    merged = merged.join(cape[["cape"]], how="left")
+    merged["cape"] = merged["cape"].ffill()
     merged.sort_index(inplace=True)
 
-    price_past   = merged["qqq_price"].shift(DIVERGENCE_WINDOW)
-    breadth_past = merged["breadth"].shift(DIVERGENCE_WINDOW)
-    merged["bearish_div"] = (
-        ((merged["qqq_price"] - price_past) / price_past * 100 >= DIVERGENCE_PRICE_RISE) &
-        ((breadth_past - merged["breadth"]) >= DIVERGENCE_BREADTH_FALL) &
-        (merged["breadth"] < DIVERGENCE_BREADTH_CAP)
+    div_cap = merged["cape"].apply(
+        lambda c: CAP_EXPENSIVE if c >= CAPE_EXPENSIVE else DIVERGENCE_BREADTH_CAP
     )
+    pp = merged["price"].shift(DIVERGENCE_WINDOW)
+    bp = merged["breadth"].shift(DIVERGENCE_WINDOW)
+    merged["bearish_div"] = (
+        ((merged["price"] - pp) / pp * 100 >= DIVERGENCE_PRICE_RISE) &
+        ((bp - merged["breadth"]) >= DIVERGENCE_BREADTH_FALL) &
+        (merged["breadth"] < div_cap)
+    ).fillna(False)
+
     return merged
 
 
 def _days_str(days: int) -> str:
-    years, remainder = divmod(days, 365)
-    months = remainder // 30
+    years, rem = divmod(days, 365)
+    months = rem // 30
     if years and months:
         return f"{years}y {months}m"
     if years:
@@ -67,40 +102,53 @@ def _days_str(days: int) -> str:
 
 
 def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
-    position       = "OUT"
-    eff_entry      = raw_entry = 0.0
-    entry_date     = None
-    trade_high     = trade_low = 0.0
-    portfolio      = INITIAL_CAPITAL
+    position   = "OUT"
+    eff_entry  = raw_entry = 0.0
+    entry_date = None
+    trade_low  = 0.0
+    portfolio  = INITIAL_CAPITAL
     trades: list[dict] = []
-    values: dict   = {}
-    cooldown_until = None
+    values: dict = {}
 
     for date, row in df.iterrows():
-        price       = row["qqq_price"]
+        price       = row["price"]
+        cape        = row["cape"]
         breadth     = row["breadth"]
         b50         = row["b50"]
         bearish_div = bool(row["bearish_div"])
-        in_cooldown = cooldown_until is not None and date <= cooldown_until
+        has_breadth = date >= BREADTH_START and not pd.isna(breadth)
+        in_phase2   = date >= BREADTH_START
 
-        if position == "OUT" and not in_cooldown and breadth < BUY_THRESHOLD and b50 < BUY_50_THRESHOLD:
-            portfolio -= COMMISSION
-            eff_entry  = price * (1 + SLIPPAGE)
-            raw_entry  = price
-            entry_date = date
-            trade_high = trade_low = price
-            position   = "IN"
+        if position == "OUT":
+            if has_breadth:
+                active_buy = BUY_THRESH_HI_CAPE if cape > CAPE_BUY_HIGH else BUY_THRESHOLD
+                do_buy = breadth < active_buy and b50 < BUY_50_THRESHOLD
+            elif not in_phase2:
+                do_buy = cape < CAPE_BUY_ABS
+            else:
+                do_buy = False
+
+            if do_buy:
+                portfolio -= COMMISSION
+                eff_entry  = price * (1 + SLIPPAGE)
+                raw_entry  = price
+                entry_date = date
+                trade_low  = price
+                position   = "IN"
+
         elif position == "IN":
-            trade_high = max(trade_high, price)
-            trade_low  = min(trade_low, price)
-            hold_days  = (date - entry_date).days
-            drawdown_pct = (price - raw_entry) / raw_entry * 100
-            sell_reason = None
-            if drawdown_pct <= -HARD_STOP_PCT:
-                sell_reason = "hard-stop"
-            elif bearish_div and hold_days >= MIN_HOLD_DAYS:
-                sell_reason = "bearish-divergence"
-            if sell_reason:
+            trade_low = min(trade_low, price)
+
+            if has_breadth:
+                do_sell = bearish_div
+                reason  = "bearish-divergence"
+            elif not in_phase2:
+                do_sell = cape > CAPE_SELL_ABS
+                reason  = "cape-overvalued"
+            else:
+                do_sell = False
+
+            if do_sell:
                 eff_exit  = price * (1 - SLIPPAGE)
                 gross_ret = (eff_exit - eff_entry) / eff_entry
                 portfolio *= (1 + gross_ret)
@@ -113,10 +161,9 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                     "return_pct":       gross_ret * 100,
                     "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
                     "accumulated":      portfolio,
-                    "sell_reason":      sell_reason,
+                    "sell_reason":      reason,
+                    "phase":            "breadth+CAPE" if has_breadth else "CAPE-only",
                 })
-                if sell_reason == "hard-stop":
-                    cooldown_until = date + pd.Timedelta(days=STOP_COOLDOWN_DAYS)
                 position = "OUT"
 
         if position == "IN":
@@ -126,7 +173,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
 
     open_trade = None
     if position == "IN":
-        last_price = df["qqq_price"].iloc[-1]
+        last_price = df["price"].iloc[-1]
         last_date  = df.index[-1]
         eff_last   = last_price * (1 - SLIPPAGE)
         open_trade = {
@@ -137,170 +184,197 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
             "return_pct":       (eff_last - eff_entry) / eff_entry * 100,
             "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
             "accumulated":      portfolio * (eff_last / eff_entry),
+            "phase":            "breadth+CAPE" if last_date >= BREADTH_START else "CAPE-only",
         }
 
     return pd.Series(values, name="strategy"), trades, open_trade
 
 
 def run_benchmark(df: pd.DataFrame) -> pd.Series:
-    first_price = df["qqq_price"].iloc[0]
-    return (INITIAL_CAPITAL * df["qqq_price"] / first_price).rename("benchmark")
+    first = df["price"].iloc[0]
+    return (INITIAL_CAPITAL * df["price"] / first).rename("benchmark")
 
 
 def compute_metrics(values: pd.Series, trades: list[dict] | None = None) -> dict:
-    daily_returns = values.pct_change().dropna()
-    total_return  = (values.iloc[-1] / values.iloc[0]) - 1
-    years         = (values.index[-1] - values.index[0]).days / 365.25
-    cagr          = (values.iloc[-1] / values.iloc[0]) ** (1 / years) - 1
-    rolling_max   = values.cummax()
-    max_drawdown  = ((values - rolling_max) / rolling_max).min()
-    std           = daily_returns.std()
-    sharpe        = (daily_returns.mean() / std * np.sqrt(252)) if std > 0 else 0.0
+    dr    = values.pct_change().dropna()
+    years = (values.index[-1] - values.index[0]).days / 365.25
+    tr    = (values.iloc[-1] / values.iloc[0]) - 1
+    cagr  = (values.iloc[-1] / values.iloc[0]) ** (1 / years) - 1
+    mdd   = ((values - values.cummax()) / values.cummax()).min()
+    std   = dr.std()
+    sh    = (dr.mean() / std * np.sqrt(252)) if std > 0 else 0.0
 
-    metrics = {
-        "Total Return": f"{total_return:.1%}",
+    m = {
+        "Total Return": f"{tr:.1%}",
         "CAGR":         f"{cagr:.1%}",
-        "Max Drawdown": f"{max_drawdown:.1%}",
-        "Sharpe Ratio": f"{sharpe:.2f}",
+        "Max Drawdown": f"{mdd:.1%}",
+        "Sharpe Ratio": f"{sh:.2f}",
         "Final Value":  f"${values.iloc[-1]:,.0f}",
     }
-
     if trades is not None:
-        n        = len(trades)
-        win_rate = sum(1 for t in trades if t["return_pct"] > 0) / n if n else 0.0
-        in_days  = sum((t["exit_date"] - t["entry_date"]).days for t in trades)
-        tot_days = (values.index[-1] - values.index[0]).days
-        metrics.update({
+        n       = len(trades)
+        wins    = sum(1 for t in trades if t["return_pct"] > 0)
+        in_days = sum((t["exit_date"] - t["entry_date"]).days for t in trades)
+        tot     = (values.index[-1] - values.index[0]).days
+        m.update({
             "# Trades":       str(n),
-            "Win Rate":       f"{win_rate:.1%}",
-            "Time in Market": f"{in_days / tot_days:.1%}" if tot_days else "—",
+            "Win Rate":       f"{wins/n:.1%}" if n else "—",
+            "Time in Market": f"{in_days/tot:.1%}" if tot else "—",
         })
-
-    return metrics
+    return m
 
 
 def print_metrics(strat: dict, bench: dict) -> None:
-    all_keys = list(dict.fromkeys(list(strat) + list(bench)))
-    col      = 16
-    header   = f"{'Metric':<22}{'Strategy':>{col}}{'Buy & Hold':>{col}}"
-    sep      = "=" * len(header)
-    print(f"\n{sep}\n{header}\n{sep}")
-    for key in all_keys:
-        print(f"  {key:<20}{strat.get(key, '—'):>{col}}{bench.get(key, '—'):>{col}}")
+    keys = list(dict.fromkeys(list(strat) + list(bench)))
+    col  = 16
+    hdr  = f"{'Metric':<22}{'Strategy':>{col}}{'Buy & Hold':>{col}}"
+    sep  = "=" * len(hdr)
+    print(f"\n{sep}\n{hdr}\n{sep}")
+    for k in keys:
+        print(f"  {k:<20}{strat.get(k,'—'):>{col}}{bench.get(k,'—'):>{col}}")
     print(sep)
 
 
 def print_trades(trades: list[dict], open_trade: dict | None = None) -> None:
     if not trades and not open_trade:
-        print("\nNo completed trades in dataset.")
+        print("\nNo completed trades.")
         return
-    header = (f"\n{'#':>3}  {'Entry':10}  {'Exit':10}  {'Held':>7}  {'Entry $':>8}  {'Exit $':>8}"
-              f"  {'Return':>8}  {'Drawdown':>9}  {'Portfolio $':>12}  Sell Reason")
-    print(header)
-    print("-" * len(header))
+    hdr = (f"\n{'#':>3}  {'Entry':10}  {'Exit':10}  {'Held':>7}  {'Entry $':>9}  {'Exit $':>9}"
+           f"  {'Return':>8}  {'Drawdown':>9}  {'Portfolio':>12}  {'Phase':14}  Reason")
+    print(hdr)
+    print("-" * len(hdr))
     for i, t in enumerate(trades, 1):
         days = (t["exit_date"] - t["entry_date"]).days
         print(
             f"{i:>3}  {t['entry_date'].strftime('%Y-%m-%d'):10}  "
             f"{t['exit_date'].strftime('%Y-%m-%d'):10}  {_days_str(days):>7}  "
-            f"{t['entry_price']:>8.2f}  {t['exit_price']:>8.2f}  "
+            f"{t['entry_price']:>9.2f}  {t['exit_price']:>9.2f}  "
             f"{t['return_pct']:>+7.1f}%  {t['max_drawdown_pct']:>+8.1f}%  "
-            f"${t['accumulated']:>11,.0f}  {t.get('sell_reason', '—')}"
+            f"${t['accumulated']:>11,.0f}  {t.get('phase',''):14}  {t.get('sell_reason','—')}"
         )
     if open_trade:
         days = (open_trade["current_date"] - open_trade["entry_date"]).days
         print(
             f"{len(trades)+1:>3}  {open_trade['entry_date'].strftime('%Y-%m-%d'):10}  "
             f"{'(open)':10}  {_days_str(days):>7}  "
-            f"{open_trade['entry_price']:>8.2f}  {open_trade['current_price']:>8.2f}  "
+            f"{open_trade['entry_price']:>9.2f}  {open_trade['current_price']:>9.2f}  "
             f"{open_trade['return_pct']:>+7.1f}%  {open_trade['max_drawdown_pct']:>+8.1f}%  "
-            f"${open_trade['accumulated']:>11,.0f}  "
+            f"${open_trade['accumulated']:>11,.0f}  {open_trade.get('phase',''):14}  "
             f"still holding (as of {open_trade['current_date'].strftime('%Y-%m-%d')})"
         )
 
 
 def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
-    fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(14, 9), sharex=True,
-        gridspec_kw={"height_ratios": [3, 1]}
+    fig, axes = plt.subplots(
+        4, 1, figsize=(16, 14), sharex=True,
+        gridspec_kw={"height_ratios": [3, 1.2, 0.8, 0.7]}
     )
+    ax1, ax2, ax3, ax4 = axes
+
     fig.suptitle(
-        f"QQQ: Breadth Strategy + Hard Stop + Cooldown\n"
-        f"Buy: breadth200<{BUY_THRESHOLD} AND breadth50<{BUY_50_THRESHOLD}  |  "
-        f"Sell: hard-stop -{HARD_STOP_PCT}% ({STOP_COOLDOWN_DAYS}d cooldown) OR bearish-div (QQQ+{DIVERGENCE_PRICE_RISE}% & breadth200↓{DIVERGENCE_BREADTH_FALL}pts & breadth200<{DIVERGENCE_BREADTH_CAP}) min hold {MIN_HOLD_DAYS}d\n"
+        "NASDAQ 100 Hybrid Backtest 1987–present\n"
+        f"Pre-2007: CAPE-only (buy CAPE<{CAPE_BUY_ABS}, sell CAPE>{CAPE_SELL_ABS})  |  "
+        f"2007+: Breadth+CAPE (buy breadth<{BUY_THRESHOLD}/{BUY_THRESH_HI_CAPE} when CAPE>{CAPE_BUY_HIGH}, "
+        f"sell cap {DIVERGENCE_BREADTH_CAP}/{CAP_EXPENSIVE} when CAPE>={CAPE_EXPENSIVE})\n"
         f"Starting capital: ${INITIAL_CAPITAL:,.0f}",
-        fontsize=11, fontweight="bold"
+        fontsize=9, fontweight="bold"
     )
 
-    ax1.plot(benchmark.index, benchmark, label="Buy & Hold QQQ", color="#2196F3", linewidth=1.5)
-    ax1.plot(strategy.index,  strategy,  label="Breadth Strategy", color="#FF5722", linewidth=1.5)
+    ax1.plot(benchmark.index, benchmark, label="Buy & Hold NDX", color="#2196F3", linewidth=1.5)
+    ax1.plot(strategy.index, strategy, label="Hybrid Strategy", color="#FF5722", linewidth=1.5)
+    ax1.axvline(BREADTH_START, color="gray", linestyle=":", linewidth=1.2,
+                label="Breadth data start (2007)")
 
-    entry_dates = [t["entry_date"] for t in trades] + ([open_trade["entry_date"]] if open_trade else [])
-    exit_dates  = [t["exit_date"] for t in trades]
-
-    if entry_dates:
-        ax1.scatter(entry_dates, strategy.reindex(entry_dates, method="nearest"),
+    all_entries = [t["entry_date"] for t in trades] + (
+        [open_trade["entry_date"]] if open_trade else [])
+    all_exits = [t["exit_date"] for t in trades]
+    if all_entries:
+        ax1.scatter(all_entries, strategy.reindex(all_entries, method="nearest"),
                     marker="^", color="green", s=80, zorder=5, label="Buy")
-    if exit_dates:
-        ax1.scatter(exit_dates, strategy.reindex(exit_dates, method="nearest"),
+    if all_exits:
+        ax1.scatter(all_exits, strategy.reindex(all_exits, method="nearest"),
                     marker="v", color="red", s=80, zorder=5, label="Sell")
 
     ax1.set_ylabel("Portfolio Value ($)")
     ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"${x:,.0f}"))
-    ax1.legend(loc="upper left")
+    ax1.legend(loc="upper left", fontsize=8)
     ax1.grid(True, alpha=0.3)
 
-    ax2.plot(df.index, df["breadth"], color="#7B1FA2", linewidth=1.2, label="% Above 200-Day MA")
-    ax2.plot(df.index, df["b50"],    color="#1565C0", linewidth=1.0, linestyle="--",
-             alpha=0.7, label="% Above 50-Day MA")
-    ax2.axhline(BUY_THRESHOLD,    color="green",     linestyle="--", linewidth=1.2,
-                label=f"Buy 200-day: <{BUY_THRESHOLD}")
-    ax2.axhline(BUY_50_THRESHOLD, color="#1565C0",   linestyle=":",  linewidth=1.2,
-                label=f"Buy 50-day: <{BUY_50_THRESHOLD}")
-    ax2.axhline(DIVERGENCE_BREADTH_CAP, color="darkorange", linestyle=":", linewidth=1.2,
-                label=f"Div cap: {DIVERGENCE_BREADTH_CAP}")
-    ax2.fill_between(df.index, df["breadth"], BUY_THRESHOLD,
-                     where=df["breadth"] < BUY_THRESHOLD, color="green", alpha=0.15)
-
-    if entry_dates:
-        ax2.scatter(entry_dates, df["breadth"].reindex(entry_dates, method="nearest"),
+    b_df = df[df.index >= BREADTH_START]
+    ax2.plot(b_df.index, b_df["breadth"], color="#7B1FA2", linewidth=1.0,
+             label="% Above 200-Day MA (S&P 500)")
+    ax2.plot(b_df.index, b_df["b50"], color="#1565C0", linewidth=0.8,
+             linestyle="--", alpha=0.7, label="% Above 50-Day MA")
+    ax2.axhline(BUY_THRESHOLD, color="green", linestyle="--", linewidth=1.0,
+                label=f"Buy: <{BUY_THRESHOLD}")
+    ax2.fill_between(b_df.index, b_df["breadth"], BUY_THRESHOLD,
+                     where=b_df["breadth"] < BUY_THRESHOLD, color="green", alpha=0.15)
+    post_entries = [d for d in all_entries if d >= BREADTH_START]
+    post_exits   = [d for d in all_exits   if d >= BREADTH_START]
+    if post_entries:
+        ax2.scatter(post_entries, b_df["breadth"].reindex(post_entries, method="nearest"),
                     marker="^", color="green", s=60, zorder=5)
-    if exit_dates:
-        ax2.scatter(exit_dates, df["breadth"].reindex(exit_dates, method="nearest"),
+    if post_exits:
+        ax2.scatter(post_exits, b_df["breadth"].reindex(post_exits, method="nearest"),
                     marker="v", color="red", s=60, zorder=5)
-
-    ax2.set_ylabel("% Stocks Above MA")
-    ax2.set_xlabel("Date")
-    ax2.legend(loc="upper left", fontsize=8)
+    ax2.set_ylabel("Breadth (2007+)")
+    ax2.legend(loc="upper left", fontsize=7)
     ax2.grid(True, alpha=0.3)
-    ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-    ax2.xaxis.set_major_locator(mdates.YearLocator(2))
+
+    ax3.plot(df.index, df["cape"], color="#E65100", linewidth=1.2, label="Shiller PE (CAPE)")
+    ax3.axhline(CAPE_BUY_ABS,   color="green",  linestyle="--", linewidth=1.0,
+                label=f"Buy (pre-2007): <{CAPE_BUY_ABS}")
+    ax3.axhline(CAPE_SELL_ABS,  color="orange", linestyle="--", linewidth=1.0,
+                label=f"Sell (pre-2007): >{CAPE_SELL_ABS}")
+    ax3.axhline(CAPE_EXPENSIVE, color="red",    linestyle=":",  linewidth=1.0,
+                label=f"Expensive: >={CAPE_EXPENSIVE}")
+    ax3.axvline(BREADTH_START, color="gray", linestyle=":", linewidth=1.2)
+    ax3.fill_between(df.index, df["cape"], CAPE_EXPENSIVE,
+                     where=df["cape"] >= CAPE_EXPENSIVE, color="red", alpha=0.10)
+    ax3.set_ylabel("CAPE")
+    ax3.legend(loc="upper left", fontsize=7)
+    ax3.grid(True, alpha=0.3)
+
+    ax4.plot(df.index, df["price"], color="#546E7A", linewidth=1.0, label="NASDAQ 100")
+    if all_entries:
+        ax4.scatter(all_entries, df["price"].reindex(all_entries, method="nearest"),
+                    marker="^", color="green", s=50, zorder=5)
+    if all_exits:
+        ax4.scatter(all_exits, df["price"].reindex(all_exits, method="nearest"),
+                    marker="v", color="red", s=50, zorder=5)
+    ax4.set_ylabel("NDX")
+    ax4.set_xlabel("Date")
+    ax4.grid(True, alpha=0.3)
+    ax4.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    ax4.xaxis.set_major_locator(mdates.YearLocator(4))
     fig.autofmt_xdate()
 
-    out_path = DATA_DIR / "qqq_performance.png"
+    out = DATA_DIR / "qqq_performance.png"
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
-    print(f"\nChart saved → {out_path}")
+    plt.savefig(out, dpi=150, bbox_inches="tight")
+    print(f"\nChart saved → {out}")
 
 
 def main() -> None:
     print("Loading data...")
     df = load_data()
-    print(f"Date range : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
-    print(
-        f"Strategy   : buy breadth200<{BUY_THRESHOLD} AND breadth50<{BUY_50_THRESHOLD} | "
-        f"sell hard-stop -{HARD_STOP_PCT}% ({STOP_COOLDOWN_DAYS}d cooldown) OR bearish-div (window={DIVERGENCE_WINDOW}d, QQQ+{DIVERGENCE_PRICE_RISE}%, "
-        f"breadth200↓≥{DIVERGENCE_BREADTH_FALL}pts, cap<{DIVERGENCE_BREADTH_CAP}, min hold {MIN_HOLD_DAYS}d)"
-    )
-    print(f"Costs      : ${COMMISSION:.0f} commission per side + {SLIPPAGE*100:.2f}% slippage per side")
+    print(f"Date range  : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
+
+    current_cape = df["cape"].iloc[-1]
+    cape_tier    = f"expensive (>={CAPE_EXPENSIVE})" if current_cape >= CAPE_EXPENSIVE else f"normal (<{CAPE_EXPENSIVE})"
+    active_buy   = BUY_THRESH_HI_CAPE if current_cape > CAPE_BUY_HIGH else BUY_THRESHOLD
+    active_cap   = CAP_EXPENSIVE if current_cape >= CAPE_EXPENSIVE else DIVERGENCE_BREADTH_CAP
+    print(f"Phase 1     : CAPE-only 1987–2006 "
+          f"(buy CAPE<{CAPE_BUY_ABS}, sell CAPE>{CAPE_SELL_ABS})")
+    print(f"Phase 2     : Breadth+CAPE 2007+ "
+          f"(buy breadth<{active_buy}, sell cap<{active_cap})")
+    print(f"Valuation   : CAPE={current_cape:.1f} [{cape_tier}]  → sell cap={active_cap}")
+    print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")
 
     strategy, trades, open_trade = run_strategy(df)
-    benchmark                    = run_benchmark(df)
+    benchmark = run_benchmark(df)
 
-    strat_metrics = compute_metrics(strategy, trades)
-    bench_metrics = compute_metrics(benchmark)
-
-    print_metrics(strat_metrics, bench_metrics)
+    print_metrics(compute_metrics(strategy, trades), compute_metrics(benchmark))
     print_trades(trades, open_trade)
     plot_results(df, strategy, benchmark, trades, open_trade)
 
