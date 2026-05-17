@@ -26,6 +26,7 @@ FPE_FILE     = DATA_DIR / "S&P500ForwardPE.csv"
 CAPE_BUY_ABS  = 22.0
 CAPE_SELL_ABS = 30.0
 
+
 # ── Phase 2: Breadth + Forward PE (2007+) ────────────────────────────────────
 # Forward PE tiers (clipped to avoid distortion when earnings collapse)
 FPE_CHEAP     = 15.0   # below → lenient thresholds (cheap market)
@@ -52,6 +53,17 @@ CAPE_EXPENSIVE = 32.0  # CAPE above this also tightens sell cap
 
 # Minimum hold to prevent whipsaws
 MIN_HOLD_DAYS = 15
+
+# Adaptive trailing stop (Phase 2 only — CAPE-only Phase 1 has no stop)
+# Early phase (first EARLY_STOP_DAYS calendar days): flat 30% below entry price.
+#   Wide enough to survive a 2008-style crash (~26% from entry) without whipsawing.
+# Late phase (after EARLY_STOP_DAYS): trailing 30% below running trade high.
+#   Protects accumulated gains; 30% wide enough to survive normal corrections
+#   (2018 Q4, 2022 bear) where the high was set long before the correction.
+EARLY_STOP_DAYS        = 60    # calendar days to use flat stop from entry
+EARLY_STOP_PCT         = 30.0  # % below entry price (early phase)
+LATE_STOP_PCT          = 30.0  # % below running trade high (late phase)
+TRAILING_STOP_COOLDOWN = 20    # calendar days before re-buying after a stop-out
 
 # ── Shared ────────────────────────────────────────────────────────────────────
 INITIAL_CAPITAL = 10_000.0
@@ -140,11 +152,12 @@ def _days_str(days: int) -> str:
 
 
 def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
-    position   = "OUT"
-    eff_entry  = raw_entry = 0.0
-    entry_date = None
-    trade_low  = 0.0
-    portfolio  = INITIAL_CAPITAL
+    position       = "OUT"
+    eff_entry      = raw_entry = 0.0
+    entry_date     = None
+    trade_low      = trade_high = 0.0
+    portfolio      = INITIAL_CAPITAL
+    cooldown_until = pd.Timestamp.min   # re-buy blocked until this date after a stop-out
     trades: list[dict] = []
     values: dict = {}
 
@@ -160,6 +173,11 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
         in_phase2    = date >= BREADTH_START
 
         if position == "OUT":
+            # Cooldown period after a trailing-stop exit — wait for dust to settle
+            if date < cooldown_until:
+                values[date] = portfolio
+                continue
+
             if has_breadth:
                 active_buy = _buy_threshold(fpe, cape)
                 do_buy = breadth < active_buy and not pd.isna(b50) and b50 < BUY_50_THRESH
@@ -169,22 +187,32 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                 do_buy = False
 
             if do_buy:
-                portfolio -= COMMISSION
-                eff_entry  = price * (1 + SLIPPAGE)
-                raw_entry  = price
-                entry_date = date
-                trade_low  = price
-                position   = "IN"
+                portfolio  -= COMMISSION
+                eff_entry   = price * (1 + SLIPPAGE)
+                raw_entry   = price
+                entry_date  = date
+                trade_low   = price
+                trade_high  = price
+                position    = "IN"
 
         elif position == "IN":
-            trade_low = min(trade_low, price)
-            held_days = (date - entry_date).days
+            trade_low  = min(trade_low, price)
+            trade_high = max(trade_high, price)
+            held_days  = (date - entry_date).days
+
+            # Adaptive stop — always overrides min-hold (risk management)
+            if held_days <= EARLY_STOP_DAYS:
+                stop_price = raw_entry * (1 - EARLY_STOP_PCT / 100)   # flat from entry
+            else:
+                stop_price = trade_high * (1 - LATE_STOP_PCT / 100)   # trailing from high
+            trailing_stop_hit = price <= stop_price
 
             if has_breadth:
                 active_cap  = _sell_cap(fpe, cape)
                 bearish_div = price_rose and breadth_fell and breadth < active_cap
-                do_sell     = bearish_div and held_days >= MIN_HOLD_DAYS
-                reason      = "bearish-divergence"
+                div_sell    = bearish_div and held_days >= MIN_HOLD_DAYS
+                do_sell     = div_sell or trailing_stop_hit
+                reason      = "bearish-divergence" if div_sell else "trailing-stop"
             elif not in_phase2:
                 do_sell = cape > CAPE_SELL_ABS
                 reason  = "cape-overvalued"
@@ -207,6 +235,8 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                     "sell_reason":      reason,
                     "phase":            "breadth+FPE" if has_breadth else "CAPE-only",
                 })
+                if reason == "trailing-stop":
+                    cooldown_until = date + pd.Timedelta(days=TRAILING_STOP_COOLDOWN)
                 position = "OUT"
 
         if position == "IN":
@@ -216,9 +246,13 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
 
     open_trade = None
     if position == "IN":
-        last_price = df["price"].iloc[-1]
-        last_date  = df.index[-1]
-        eff_last   = last_price * (1 - SLIPPAGE)
+        last_price  = df["price"].iloc[-1]
+        last_date   = df.index[-1]
+        eff_last    = last_price * (1 - SLIPPAGE)
+        held_so_far = (last_date - entry_date).days
+        stop_level  = (raw_entry * (1 - EARLY_STOP_PCT / 100)
+                       if held_so_far <= EARLY_STOP_DAYS
+                       else trade_high * (1 - LATE_STOP_PCT / 100))
         open_trade = {
             "entry_date":       entry_date,
             "entry_price":      raw_entry,
@@ -228,6 +262,8 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
             "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
             "accumulated":      portfolio * (eff_last / eff_entry),
             "phase":            "breadth+FPE" if last_date >= BREADTH_START else "CAPE-only",
+            "trade_high":       trade_high,
+            "stop_level":       stop_level,
         }
 
     return pd.Series(values, name="strategy"), trades, open_trade
@@ -296,14 +332,20 @@ def print_trades(trades: list[dict], open_trade: dict | None = None) -> None:
             f"${t['accumulated']:>11,.0f}  {t.get('phase',''):14}  {t.get('sell_reason','—')}"
         )
     if open_trade:
-        days = (open_trade["current_date"] - open_trade["entry_date"]).days
+        days      = (open_trade["current_date"] - open_trade["entry_date"]).days
+        stop_info = ""
+        if "stop_level" in open_trade:
+            pct_to_stop  = (open_trade["current_price"] / open_trade["stop_level"] - 1) * 100
+            held_d       = (open_trade["current_date"] - open_trade["entry_date"]).days
+            stop_phase   = "early" if held_d <= EARLY_STOP_DAYS else "late-trail"
+            stop_info    = f"  stop={open_trade['stop_level']:,.0f} ({stop_phase}, {pct_to_stop:+.1f}% away)"
         print(
             f"{len(trades)+1:>3}  {open_trade['entry_date'].strftime('%Y-%m-%d'):10}  "
             f"{'(open)':10}  {_days_str(days):>7}  "
             f"{open_trade['entry_price']:>9.2f}  {open_trade['current_price']:>9.2f}  "
             f"{open_trade['return_pct']:>+7.1f}%  {open_trade['max_drawdown_pct']:>+8.1f}%  "
             f"${open_trade['accumulated']:>11,.0f}  {open_trade.get('phase',''):14}  "
-            f"still holding (as of {open_trade['current_date'].strftime('%Y-%m-%d')})"
+            f"still holding (as of {open_trade['current_date'].strftime('%Y-%m-%d')}){stop_info}"
         )
 
 
@@ -448,6 +490,8 @@ def main() -> None:
     print(f"Forward PE  : {current_fpe:.1f} [{fpe_tier}]  → buy<{buy_t}%, sell cap<{sell_c}%")
     print(f"CAPE        : {current_cape:.1f}")
     print(f"Min hold    : {MIN_HOLD_DAYS} days")
+    print(f"Trailing stop: {EARLY_STOP_PCT:.0f}% from entry (first {EARLY_STOP_DAYS}d)  →  "
+          f"{LATE_STOP_PCT:.0f}% trailing from high  |  cooldown {TRAILING_STOP_COOLDOWN}d after stop-out")
     print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")
 
     strategy, trades, open_trade = run_strategy(df)
