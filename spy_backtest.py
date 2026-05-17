@@ -9,22 +9,26 @@ SPY_FILE     = DATA_DIR / "SPY.csv"
 BREADTH_FILE = DATA_DIR / "S&P 500 Stocks Above 200-Day Average Historical Data.csv"
 B50_FILE     = DATA_DIR / "S&P 500 Stocks Above 50-Day Average Historical Data.csv"
 CAPE_FILE    = DATA_DIR / "ShillerPE.csv"
+FWDPE_FILE   = DATA_DIR / "S&P500ForwardPE.csv"
 
 BUY_THRESHOLD           = 18.0
 BUY_50_THRESHOLD        = 25.0
 DIVERGENCE_WINDOW       = 100
 DIVERGENCE_PRICE_RISE   = 1.0
 DIVERGENCE_BREADTH_FALL = 20.0
-DIVERGENCE_BREADTH_CAP  = 55.0   # base sell cap when CAPE is normal
-CAPE_HIGH               = 32.0   # CAPE above this → tighter sell cap
-CAP_HIGH_PE             = 52.0   # breadth cap when CAPE >= CAPE_HIGH
-CAPE_VERY_HIGH          = 38.0   # CAPE above this → even tighter sell cap
-CAP_VERY_HIGH_PE        = 35.0   # breadth cap when CAPE >= CAPE_VERY_HIGH
-# Drawdown minimization via CAPE
-BUY_THRESH_HI_CAPE      = 12.0   # tighter buy threshold when CAPE is elevated
-CAPE_BUY_HIGH           = 28.0   # CAPE above this → require breadth < BUY_THRESH_HI_CAPE
-CAPE_DROP_STOP          = 0.15   # exit when CAPE falls 15% from trade-entry level
-STOP_COOLDOWN_DAYS      = 90     # days before re-entering after a CAPE-drop stop
+DIVERGENCE_BREADTH_CAP  = 55.0   # base sell cap (normal CAPE)
+CAPE_HIGH               = 32.0
+CAP_HIGH_PE             = 52.0   # CAPE >= 32
+FPE_MID_THRESH          = 24.0   # fwd PE overlay: CAPE>=32 AND fwd PE>this → tighter
+CAP_MID_DUAL            = 38.0   # cap when CAPE>=32 AND fwd PE>FPE_MID_THRESH
+CAPE_VERY_HIGH          = 38.0
+CAP_VERY_HIGH_PE        = 35.0   # CAPE >= 38
+FPE_HI_THRESH           = 20.0   # fwd PE overlay: CAPE>=38 AND fwd PE>this → tightest
+CAP_DUAL_EXPENSIVE      = 22.0   # cap when CAPE>=38 AND fwd PE>FPE_HI_THRESH
+BUY_THRESH_HI_CAPE      = 12.0
+CAPE_BUY_HIGH           = 28.0
+CAPE_DROP_STOP          = 0.15
+STOP_COOLDOWN_DAYS      = 90
 INITIAL_CAPITAL         = 10_000.0
 COMMISSION              = 1.0
 SLIPPAGE                = 0.0005
@@ -52,18 +56,34 @@ def load_data() -> pd.DataFrame:
     cape_raw.set_index("Date", inplace=True)
     cape_raw = cape_raw.rename(columns={"close": "cape"})
 
+    fwdpe_raw = pd.read_csv(FWDPE_FILE)
+    fwdpe_raw["Date"] = pd.to_datetime(fwdpe_raw["date"], format="%Y-%m-%d")
+    fwdpe_raw.set_index("Date", inplace=True)
+
     merged = spy_raw[["spy_price"]].join(
         breadth_raw[["Price"]].rename(columns={"Price": "breadth"}), how="inner"
     )
     merged = merged.join(b50_raw[["Price"]].rename(columns={"Price": "b50"}), how="inner")
     merged = merged.join(cape_raw[["cape"]], how="left")
-    merged["cape"] = merged["cape"].ffill()
+    merged = merged.join(fwdpe_raw[["forward_pe"]], how="left")
+    merged["cape"]       = merged["cape"].ffill()
+    merged["forward_pe"] = merged["forward_pe"].ffill()
     merged.sort_index(inplace=True)
 
-    # PE-tiered divergence cap: tighter exits when market is overvalued
-    div_cap = merged["cape"].apply(
-        lambda c: CAP_VERY_HIGH_PE if c >= CAPE_VERY_HIGH else (CAP_HIGH_PE if c >= CAPE_HIGH else DIVERGENCE_BREADTH_CAP)
-    )
+    # Dual-valuation tiered divergence cap
+    def _div_cap(row) -> float:
+        c, f = row["cape"], row["forward_pe"]
+        if c >= CAPE_VERY_HIGH and not pd.isna(f) and f > FPE_HI_THRESH:
+            return CAP_DUAL_EXPENSIVE
+        if c >= CAPE_VERY_HIGH:
+            return CAP_VERY_HIGH_PE
+        if c >= CAPE_HIGH and not pd.isna(f) and f > FPE_MID_THRESH:
+            return CAP_MID_DUAL
+        if c >= CAPE_HIGH:
+            return CAP_HIGH_PE
+        return DIVERGENCE_BREADTH_CAP
+
+    div_cap      = merged.apply(_div_cap, axis=1)
     price_past   = merged["spy_price"].shift(DIVERGENCE_WINDOW)
     breadth_past = merged["breadth"].shift(DIVERGENCE_WINDOW)
     merged["bearish_div"] = (
@@ -248,12 +268,12 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
         gridspec_kw={"height_ratios": [3, 1.2, 0.8]}
     )
     fig.suptitle(
-        f"SPY: Breadth + CAPE Strategy\n"
+        f"SPY: Breadth + CAPE + Forward PE Strategy\n"
         f"Buy: breadth200<{BUY_THRESHOLD} (or <{BUY_THRESH_HI_CAPE} when CAPE>{CAPE_BUY_HIGH})  |  "
-        f"Sell cap: {DIVERGENCE_BREADTH_CAP}/{CAP_HIGH_PE}/{CAP_VERY_HIGH_PE} by CAPE tier  |  "
-        f"CAPE-drop stop: {CAPE_DROP_STOP:.0%}\n"
+        f"Sell caps: {DIVERGENCE_BREADTH_CAP} / {CAP_HIGH_PE} / {CAP_VERY_HIGH_PE} / {CAP_DUAL_EXPENSIVE} "
+        f"(CAPE+FwdPE tiers)  |  CAPE-drop stop: {CAPE_DROP_STOP:.0%}\n"
         f"Starting capital: ${INITIAL_CAPITAL:,.0f}",
-        fontsize=11, fontweight="bold"
+        fontsize=10, fontweight="bold"
     )
 
     ax1.plot(benchmark.index, benchmark, label="Buy & Hold SPY", color="#2196F3", linewidth=1.5)
@@ -335,15 +355,25 @@ def main() -> None:
     else:
         active_cap = DIVERGENCE_BREADTH_CAP
         cape_tier  = f"normal (<{CAPE_HIGH})"
-    active_buy = BUY_THRESH_HI_CAPE if current_cape > CAPE_BUY_HIGH else BUY_THRESHOLD
+    current_fpe = df["forward_pe"].iloc[-1]
+    active_buy  = BUY_THRESH_HI_CAPE if current_cape > CAPE_BUY_HIGH else BUY_THRESHOLD
+    if current_cape >= CAPE_VERY_HIGH and not pd.isna(current_fpe) and current_fpe > FPE_HI_THRESH:
+        active_cap = CAP_DUAL_EXPENSIVE
+        val_note   = f"CAPE+FwdPE dual-expensive (fwd PE={current_fpe:.1f}>{FPE_HI_THRESH})"
+    elif current_cape >= CAPE_VERY_HIGH:
+        active_cap = CAP_VERY_HIGH_PE
+        val_note   = f"CAPE very-high only (fwd PE={current_fpe:.1f}<={FPE_HI_THRESH})"
+    elif current_cape >= CAPE_HIGH and not pd.isna(current_fpe) and current_fpe > FPE_MID_THRESH:
+        active_cap = CAP_MID_DUAL
+        val_note   = f"CAPE+FwdPE mid-dual (fwd PE={current_fpe:.1f}>{FPE_MID_THRESH})"
+    else:
+        val_note   = f"fwd PE={current_fpe:.1f}"
     print(
-        f"Strategy   : buy breadth200<{active_buy} (CAPE>{CAPE_BUY_HIGH}→<{BUY_THRESH_HI_CAPE}) "
-        f"AND breadth50<{BUY_50_THRESHOLD} | "
-        f"sell: bearish-div (cap<{active_cap}) OR CAPE drops {CAPE_DROP_STOP:.0%} from entry"
+        f"Strategy   : buy breadth200<{active_buy} AND breadth50<{BUY_50_THRESHOLD} | "
+        f"sell: bearish-div (cap<{active_cap}) OR CAPE drops {CAPE_DROP_STOP:.0%}"
     )
     print(
-        f"CAPE       : {current_cape:.1f} [{cape_tier}] → buy cap={active_buy}  sell cap={active_cap}  "
-        f"drop-stop={CAPE_DROP_STOP:.0%}  cooldown={STOP_COOLDOWN_DAYS}d"
+        f"Valuation  : CAPE={current_cape:.1f} [{cape_tier}]  {val_note}  → sell cap={active_cap}"
     )
     print(f"Costs      : ${COMMISSION:.0f} commission per side + {SLIPPAGE*100:.2f}% slippage per side")
 
