@@ -5,7 +5,7 @@ import matplotlib.dates as mdates
 from pathlib import Path
 
 DATA_DIR     = Path(__file__).parent
-SPY_FILE     = DATA_DIR / "SPY ETF Stock Price History.csv"
+SPY_FILE     = DATA_DIR / "SPY.csv"
 BREADTH_FILE = DATA_DIR / "S&P 500 Stocks Above 200-Day Average Historical Data.csv"
 B50_FILE     = DATA_DIR / "S&P 500 Stocks Above 50-Day Average Historical Data.csv"
 
@@ -25,19 +25,21 @@ def _parse_price(series: pd.Series) -> pd.Series:
 
 
 def load_data() -> pd.DataFrame:
-    spy_raw     = pd.read_csv(SPY_FILE)
+    spy_raw = pd.read_csv(SPY_FILE)
+    spy_raw["Date"] = pd.to_datetime(spy_raw["date"], format="%Y-%m-%d")
+    spy_raw.set_index("Date", inplace=True)
+    spy_raw = spy_raw.rename(columns={"close": "spy_price"})
+
     breadth_raw = pd.read_csv(BREADTH_FILE)
     b50_raw     = pd.read_csv(B50_FILE)
-
-    for df in (spy_raw, breadth_raw, b50_raw):
+    for df in (breadth_raw, b50_raw):
         df["Date"] = pd.to_datetime(df["Date"], format="%m/%d/%Y")
         df.set_index("Date", inplace=True)
         df["Price"] = _parse_price(df["Price"])
 
-    merged = spy_raw[["Price"]].join(
-        breadth_raw[["Price"]], lsuffix="_spy", rsuffix="_breadth", how="inner"
+    merged = spy_raw[["spy_price"]].join(
+        breadth_raw[["Price"]].rename(columns={"Price": "breadth"}), how="inner"
     )
-    merged = merged.rename(columns={"Price_spy": "spy_price", "Price_breadth": "breadth"})
     merged = merged.join(b50_raw[["Price"]].rename(columns={"Price": "b50"}), how="inner")
     merged.sort_index(inplace=True)
 
