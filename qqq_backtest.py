@@ -52,8 +52,14 @@ CAP_NORMAL     = 55.0
 CAP_EXPENSIVE  = 40.0
 CAPE_EXPENSIVE = 32.0
 
-# Minimum hold to prevent whipsaws
-MIN_HOLD_DAYS = 15
+# Minimum hold — 35 days prevents premature divergence exits that fire because
+# the 100-day lookback still contains pre-crash breadth highs (e.g. COVID April 2020)
+MIN_HOLD_DAYS = 35
+
+# Recovery re-entry: after breadth crashes while OUT, re-enter when it recovers.
+# Catches bull-market resumptions without waiting for another crash-level buy signal.
+RECOVERY_CRASH_LOW = 30.0  # breadth must touch this (confirms a real crash happened)
+RECOVERY_HIGH      = 55.0  # breadth recovery level that triggers re-entry
 
 # ── Shared ────────────────────────────────────────────────────────────────────
 INITIAL_CAPITAL = 10_000.0
@@ -116,8 +122,10 @@ def load_data() -> pd.DataFrame:
     merged = merged.join(b50[["Price"]].rename(columns={"Price": "b50"}), how="left")
     merged = merged.join(cape[["cape"]], how="left")
     merged = merged.join(fpe[["fpe"]], how="left")
-    merged["cape"] = merged["cape"].ffill()
-    merged["fpe"]  = merged["fpe"].ffill()
+    merged["cape"]  = merged["cape"].ffill()
+    merged["fpe"]   = merged["fpe"].ffill()
+    merged["ma50"]  = merged["price"].rolling(50).mean()
+    merged["ma200"] = merged["price"].rolling(200).mean()
     merged.sort_index(inplace=True)
 
     pp = merged["price"].shift(DIVERGENCE_WINDOW)
@@ -141,11 +149,12 @@ def _days_str(days: int) -> str:
 
 
 def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
-    position   = "OUT"
-    eff_entry  = raw_entry = 0.0
-    entry_date = None
-    trade_low  = 0.0
-    portfolio  = INITIAL_CAPITAL
+    position      = "OUT"
+    eff_entry     = raw_entry = 0.0
+    entry_date    = None
+    trade_low     = 0.0
+    portfolio     = INITIAL_CAPITAL
+    saw_crash_low = False  # True once breadth drops below RECOVERY_CRASH_LOW while OUT
     trades: list[dict] = []
     values: dict = {}
 
@@ -155,24 +164,40 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
         fpe          = row["fpe"]
         breadth      = row["breadth"]
         b50          = row["b50"]
+        ma50         = row["ma50"]
+        ma200        = row["ma200"]
         price_rose   = bool(row["price_rose"])
         breadth_fell = bool(row["breadth_fell"])
         has_breadth  = date >= BREADTH_START and not pd.isna(breadth)
 
         if position == "OUT":
             if has_breadth:
-                active_buy = _buy_threshold(fpe, cape)
-                do_buy = breadth < active_buy and not pd.isna(b50) and b50 < BUY_50_THRESH
+                # Track whether breadth has crashed since last exit
+                if breadth < RECOVERY_CRASH_LOW:
+                    saw_crash_low = True
+
+                active_buy   = _buy_threshold(fpe, cape)
+                oversold_buy = breadth < active_buy and not pd.isna(b50) and b50 < BUY_50_THRESH
+                recovery_buy = (saw_crash_low
+                                and breadth >= RECOVERY_HIGH
+                                and not pd.isna(b50)
+                                and b50 >= RECOVERY_HIGH
+                                and not pd.isna(ma50) and not pd.isna(ma200)
+                                and ma50 >= ma200)   # golden cross → structural uptrend confirmed
+                do_buy     = oversold_buy or recovery_buy
+                buy_signal = "recovery" if (recovery_buy and not oversold_buy) else "oversold"
             else:
-                do_buy = False
+                do_buy     = False
+                buy_signal = ""
 
             if do_buy:
-                portfolio -= COMMISSION
-                eff_entry  = price * (1 + SLIPPAGE)
-                raw_entry  = price
-                entry_date = date
-                trade_low  = price
-                position   = "IN"
+                portfolio     -= COMMISSION
+                eff_entry      = price * (1 + SLIPPAGE)
+                raw_entry      = price
+                entry_date     = date
+                trade_low      = price
+                saw_crash_low  = False  # reset for next out-of-market cycle
+                position       = "IN"
 
         elif position == "IN":
             trade_low = min(trade_low, price)
@@ -200,6 +225,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                     "return_pct":       gross_ret * 100,
                     "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
                     "accumulated":      portfolio,
+                    "buy_signal":       buy_signal,
                     "sell_reason":      reason,
                 })
                 position = "OUT"
@@ -222,6 +248,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
             "return_pct":       (eff_last - eff_entry) / eff_entry * 100,
             "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
             "accumulated":      portfolio * (eff_last / eff_entry),
+            "buy_signal":       buy_signal,
         }
 
     return pd.Series(values, name="strategy"), trades, open_trade
@@ -277,7 +304,7 @@ def print_trades(trades: list[dict], open_trade: dict | None = None) -> None:
         print("\nNo completed trades.")
         return
     hdr = (f"\n{'#':>3}  {'Entry':10}  {'Exit':10}  {'Held':>7}  {'Entry $':>9}  {'Exit $':>9}"
-           f"  {'Return':>8}  {'Drawdown':>9}  {'Portfolio':>12}  Reason")
+           f"  {'Return':>8}  {'Drawdown':>9}  {'Portfolio':>12}  {'Buy':8}  Sell")
     print(hdr)
     print("-" * len(hdr))
     for i, t in enumerate(trades, 1):
@@ -287,7 +314,7 @@ def print_trades(trades: list[dict], open_trade: dict | None = None) -> None:
             f"{t['exit_date'].strftime('%Y-%m-%d'):10}  {_days_str(days):>7}  "
             f"{t['entry_price']:>9.2f}  {t['exit_price']:>9.2f}  "
             f"{t['return_pct']:>+7.1f}%  {t['max_drawdown_pct']:>+8.1f}%  "
-            f"${t['accumulated']:>11,.0f}  {t.get('sell_reason','—')}"
+            f"${t['accumulated']:>11,.0f}  {t.get('buy_signal','—'):8}  {t.get('sell_reason','—')}"
         )
     if open_trade:
         days = (open_trade["current_date"] - open_trade["entry_date"]).days
@@ -296,7 +323,7 @@ def print_trades(trades: list[dict], open_trade: dict | None = None) -> None:
             f"{'(open)':10}  {_days_str(days):>7}  "
             f"{open_trade['entry_price']:>9.2f}  {open_trade['current_price']:>9.2f}  "
             f"{open_trade['return_pct']:>+7.1f}%  {open_trade['max_drawdown_pct']:>+8.1f}%  "
-            f"${open_trade['accumulated']:>11,.0f}  "
+            f"${open_trade['accumulated']:>11,.0f}  {open_trade.get('buy_signal','—'):8}  "
             f"still holding (as of {open_trade['current_date'].strftime('%Y-%m-%d')})"
         )
 
@@ -437,6 +464,7 @@ def main() -> None:
     print(f"Forward PE  : {current_fpe:.1f} [{fpe_tier}]  → buy<{buy_t}%, sell cap<{sell_c}%")
     print(f"CAPE        : {current_cape:.1f}")
     print(f"Min hold    : {MIN_HOLD_DAYS} days")
+    print(f"Recovery    : re-enter when breadth recovers >{RECOVERY_HIGH}% after crash below {RECOVERY_CRASH_LOW}%")
     print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")
 
     strategy, trades, open_trade = run_strategy(df)
