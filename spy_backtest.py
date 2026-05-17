@@ -15,11 +15,16 @@ BUY_50_THRESHOLD        = 25.0
 DIVERGENCE_WINDOW       = 100
 DIVERGENCE_PRICE_RISE   = 1.0
 DIVERGENCE_BREADTH_FALL = 20.0
-DIVERGENCE_BREADTH_CAP  = 55.0   # base cap when CAPE is normal
+DIVERGENCE_BREADTH_CAP  = 55.0   # base sell cap when CAPE is normal
 CAPE_HIGH               = 32.0   # CAPE above this → tighter sell cap
 CAP_HIGH_PE             = 52.0   # breadth cap when CAPE >= CAPE_HIGH
 CAPE_VERY_HIGH          = 38.0   # CAPE above this → even tighter sell cap
 CAP_VERY_HIGH_PE        = 35.0   # breadth cap when CAPE >= CAPE_VERY_HIGH
+# Drawdown minimization via CAPE
+BUY_THRESH_HI_CAPE      = 12.0   # tighter buy threshold when CAPE is elevated
+CAPE_BUY_HIGH           = 28.0   # CAPE above this → require breadth < BUY_THRESH_HI_CAPE
+CAPE_DROP_STOP          = 0.15   # exit when CAPE falls 15% from trade-entry level
+STOP_COOLDOWN_DAYS      = 90     # days before re-entering after a CAPE-drop stop
 INITIAL_CAPITAL         = 10_000.0
 COMMISSION              = 1.0
 SLIPPAGE                = 0.0005
@@ -82,34 +87,47 @@ def _days_str(days: int) -> str:
 
 
 def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
-    position   = "OUT"
-    eff_entry  = raw_entry = 0.0
-    entry_date = None
-    trade_low  = 0.0
-    portfolio  = INITIAL_CAPITAL
+    position       = "OUT"
+    eff_entry      = raw_entry = 0.0
+    entry_date     = None
+    cape_entry     = 0.0
+    trade_low      = 0.0
+    portfolio      = INITIAL_CAPITAL
     trades: list[dict] = []
     values: dict = {}
+    stop_exit_date = None
 
     for date, row in df.iterrows():
         price       = row["spy_price"]
         breadth     = row["breadth"]
         b50         = row["b50"]
+        cape        = row["cape"]
         bearish_div = bool(row["bearish_div"])
 
-        if position == "OUT" and breadth < BUY_THRESHOLD and b50 < BUY_50_THRESHOLD:
+        # tighter buy threshold when market is overvalued
+        active_buy  = BUY_THRESH_HI_CAPE if cape > CAPE_BUY_HIGH else BUY_THRESHOLD
+        in_cooldown = (stop_exit_date is not None and
+                       (date - stop_exit_date).days < STOP_COOLDOWN_DAYS)
+
+        if position == "OUT" and not in_cooldown and breadth < active_buy and b50 < BUY_50_THRESHOLD:
             portfolio -= COMMISSION
             eff_entry  = price * (1 + SLIPPAGE)
             raw_entry  = price
             entry_date = date
+            cape_entry = cape
             trade_low  = price
             position   = "IN"
+
         elif position == "IN":
-            trade_low = min(trade_low, price)
-            if bearish_div:
+            trade_low    = min(trade_low, price)
+            cape_crashed = cape < cape_entry * (1 - CAPE_DROP_STOP)
+
+            if bearish_div or cape_crashed:
                 eff_exit  = price * (1 - SLIPPAGE)
                 gross_ret = (eff_exit - eff_entry) / eff_entry
                 portfolio *= (1 + gross_ret)
                 portfolio -= COMMISSION
+                reason = "cape-drop-stop" if (cape_crashed and not bearish_div) else "bearish-divergence"
                 trades.append({
                     "entry_date":       entry_date,
                     "exit_date":        date,
@@ -118,9 +136,11 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                     "return_pct":       gross_ret * 100,
                     "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
                     "accumulated":      portfolio,
-                    "sell_reason":      "bearish-divergence",
+                    "sell_reason":      reason,
                 })
                 position = "OUT"
+                if cape_crashed and not bearish_div:
+                    stop_exit_date = date
 
         if position == "IN":
             values[date] = portfolio * (price * (1 - SLIPPAGE) / eff_entry)
@@ -229,8 +249,9 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     )
     fig.suptitle(
         f"SPY: Breadth + CAPE Strategy\n"
-        f"Buy: breadth200<{BUY_THRESHOLD} AND breadth50<{BUY_50_THRESHOLD}  |  "
-        f"Sell cap: {DIVERGENCE_BREADTH_CAP} (CAPE<{CAPE_HIGH}) / {CAP_HIGH_PE} (CAPE {CAPE_HIGH}–{CAPE_VERY_HIGH}) / {CAP_VERY_HIGH_PE} (CAPE>{CAPE_VERY_HIGH})\n"
+        f"Buy: breadth200<{BUY_THRESHOLD} (or <{BUY_THRESH_HI_CAPE} when CAPE>{CAPE_BUY_HIGH})  |  "
+        f"Sell cap: {DIVERGENCE_BREADTH_CAP}/{CAP_HIGH_PE}/{CAP_VERY_HIGH_PE} by CAPE tier  |  "
+        f"CAPE-drop stop: {CAPE_DROP_STOP:.0%}\n"
         f"Starting capital: ${INITIAL_CAPITAL:,.0f}",
         fontsize=11, fontweight="bold"
     )
@@ -314,13 +335,15 @@ def main() -> None:
     else:
         active_cap = DIVERGENCE_BREADTH_CAP
         cape_tier  = f"normal (<{CAPE_HIGH})"
+    active_buy = BUY_THRESH_HI_CAPE if current_cape > CAPE_BUY_HIGH else BUY_THRESHOLD
     print(
-        f"Strategy   : buy breadth200<{BUY_THRESHOLD} AND breadth50<{BUY_50_THRESHOLD} | sell bearish-divergence "
-        f"(window={DIVERGENCE_WINDOW}d, SPY+{DIVERGENCE_PRICE_RISE}%, "
-        f"breadth200↓≥{DIVERGENCE_BREADTH_FALL}pts)"
+        f"Strategy   : buy breadth200<{active_buy} (CAPE>{CAPE_BUY_HIGH}→<{BUY_THRESH_HI_CAPE}) "
+        f"AND breadth50<{BUY_50_THRESHOLD} | "
+        f"sell: bearish-div (cap<{active_cap}) OR CAPE drops {CAPE_DROP_STOP:.0%} from entry"
     )
     print(
-        f"CAPE       : {current_cape:.1f} [{cape_tier}] → active sell cap = breadth200 < {active_cap}"
+        f"CAPE       : {current_cape:.1f} [{cape_tier}] → buy cap={active_buy}  sell cap={active_cap}  "
+        f"drop-stop={CAPE_DROP_STOP:.0%}  cooldown={STOP_COOLDOWN_DAYS}d"
     )
     print(f"Costs      : ${COMMISSION:.0f} commission per side + {SLIPPAGE*100:.2f}% slippage per side")
 
