@@ -2,9 +2,9 @@
 S&P 500 Hybrid Backtest 1987 – present
 
 Phase 1 (1987–2006): CAPE-only strategy — buy when CAPE is cheap,
-  sell when CAPE recovers to overvalued territory or CAPE-drop stop fires.
+  sell when CAPE recovers to overvalued territory.
 Phase 2 (2007+): Full breadth + CAPE strategy (breadth 200-day & 50-day MA
-  with PE-tiered divergence caps and CAPE-drop stop).
+  with 2-tier CAPE-adjusted divergence cap).
 """
 import numpy as np
 import pandas as pd
@@ -17,37 +17,28 @@ SP500_FILE   = DATA_DIR / "S&P500.csv"
 BREADTH_FILE = DATA_DIR / "S&P 500 Stocks Above 200-Day Average Historical Data.csv"
 B50_FILE     = DATA_DIR / "S&P 500 Stocks Above 50-Day Average Historical Data.csv"
 CAPE_FILE    = DATA_DIR / "ShillerPE.csv"
-FWDPE_FILE   = DATA_DIR / "S&P500ForwardPE.csv"
 
 # ── Phase 1: CAPE-only (pre-2007) ────────────────────────────────────────────
-CAPE_BUY_ABS        = 24.0
-CAPE_SELL_ABS       = 30.0
+CAPE_BUY_ABS  = 24.0
+CAPE_SELL_ABS = 30.0
 
-# ── Phase 2: Breadth + CAPE + Forward PE (2007+) ─────────────────────────────
+# ── Phase 2: Breadth + CAPE (2007+) ──────────────────────────────────────────
 BUY_THRESHOLD           = 18.0
 BUY_50_THRESHOLD        = 25.0
+BUY_THRESH_HI_CAPE      = 12.0   # tighter when CAPE is elevated
+CAPE_BUY_HIGH           = 30.0   # CAPE above this → use BUY_THRESH_HI_CAPE
 DIVERGENCE_WINDOW       = 100
 DIVERGENCE_PRICE_RISE   = 1.0
 DIVERGENCE_BREADTH_FALL = 20.0
-DIVERGENCE_BREADTH_CAP  = 55.0
-CAPE_HIGH               = 32.0
-CAP_HIGH_PE             = 52.0
-FPE_MID_THRESH          = 24.0   # fwd PE overlay for CAPE>=32 tier
-CAP_MID_DUAL            = 38.0
-CAPE_VERY_HIGH          = 38.0
-CAP_VERY_HIGH_PE        = 35.0
-FPE_HI_THRESH           = 20.0   # fwd PE overlay for CAPE>=38 tier
-CAP_DUAL_EXPENSIVE      = 22.0
-BUY_THRESH_HI_CAPE      = 12.0
-CAPE_BUY_HIGH           = 28.0
+DIVERGENCE_BREADTH_CAP  = 55.0   # sell cap when CAPE < CAPE_EXPENSIVE
+CAPE_EXPENSIVE          = 30.0   # above this → tighter sell cap
+CAP_EXPENSIVE           = 45.0   # sell cap when CAPE >= CAPE_EXPENSIVE
 
 # ── Shared ────────────────────────────────────────────────────────────────────
-CAPE_DROP_STOP      = 0.15
-STOP_COOLDOWN_DAYS  = 90
-INITIAL_CAPITAL     = 10_000.0
-COMMISSION          = 1.0
-SLIPPAGE            = 0.0005
-BREADTH_START       = pd.Timestamp("2007-01-02")
+INITIAL_CAPITAL = 10_000.0
+COMMISSION      = 1.0
+SLIPPAGE        = 0.0005
+BREADTH_START   = pd.Timestamp("2007-01-02")
 
 
 def _parse_price(s: pd.Series) -> pd.Series:
@@ -75,33 +66,17 @@ def load_data() -> pd.DataFrame:
     cape.set_index("Date", inplace=True)
     cape = cape.rename(columns={"close": "cape"})
 
-    fwdpe = pd.read_csv(FWDPE_FILE)
-    fwdpe["Date"] = pd.to_datetime(fwdpe["date"], format="%Y-%m-%d")
-    fwdpe.set_index("Date", inplace=True)
-
     merged = sp[["price"]].join(
         b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"
     )
     merged = merged.join(b50[["Price"]].rename(columns={"Price": "b50"}), how="left")
     merged = merged.join(cape[["cape"]], how="left")
-    merged = merged.join(fwdpe[["forward_pe"]], how="left")
-    merged["cape"]       = merged["cape"].ffill()
-    merged["forward_pe"] = merged["forward_pe"].ffill()
+    merged["cape"] = merged["cape"].ffill()
     merged.sort_index(inplace=True)
 
-    def _div_cap(row) -> float:
-        c, f = row["cape"], row["forward_pe"]
-        if c >= CAPE_VERY_HIGH and not pd.isna(f) and f > FPE_HI_THRESH:
-            return CAP_DUAL_EXPENSIVE
-        if c >= CAPE_VERY_HIGH:
-            return CAP_VERY_HIGH_PE
-        if c >= CAPE_HIGH and not pd.isna(f) and f > FPE_MID_THRESH:
-            return CAP_MID_DUAL
-        if c >= CAPE_HIGH:
-            return CAP_HIGH_PE
-        return DIVERGENCE_BREADTH_CAP
-
-    div_cap = merged.apply(_div_cap, axis=1)
+    div_cap = merged["cape"].apply(
+        lambda c: CAP_EXPENSIVE if c >= CAPE_EXPENSIVE else DIVERGENCE_BREADTH_CAP
+    )
     pp = merged["price"].shift(DIVERGENCE_WINDOW)
     bp = merged["breadth"].shift(DIVERGENCE_WINDOW)
     merged["bearish_div"] = (
@@ -126,15 +101,13 @@ def _days_str(days: int) -> str:
 
 
 def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
-    position       = "OUT"
-    eff_entry      = raw_entry = 0.0
-    entry_date     = None
-    cape_entry     = 0.0
-    trade_low      = 0.0
-    portfolio      = INITIAL_CAPITAL
+    position   = "OUT"
+    eff_entry  = raw_entry = 0.0
+    entry_date = None
+    trade_low  = 0.0
+    portfolio  = INITIAL_CAPITAL
     trades: list[dict] = []
     values: dict = {}
-    stop_exit_date = None
 
     for date, row in df.iterrows():
         price       = row["price"]
@@ -144,36 +117,36 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
         bearish_div = bool(row["bearish_div"])
         has_breadth = date >= BREADTH_START and not pd.isna(breadth)
 
-        in_cooldown = (stop_exit_date is not None and
-                       (date - stop_exit_date).days < STOP_COOLDOWN_DAYS)
+        in_phase2 = date >= BREADTH_START
 
-        if position == "OUT" and not in_cooldown:
+        if position == "OUT":
             if has_breadth:
                 active_buy = BUY_THRESH_HI_CAPE if cape > CAPE_BUY_HIGH else BUY_THRESHOLD
                 do_buy = breadth < active_buy and b50 < BUY_50_THRESHOLD
-            else:
+            elif not in_phase2:
                 do_buy = cape < CAPE_BUY_ABS
+            else:
+                do_buy = False  # in phase 2 but breadth missing — wait
 
             if do_buy:
                 portfolio -= COMMISSION
                 eff_entry  = price * (1 + SLIPPAGE)
                 raw_entry  = price
                 entry_date = date
-                cape_entry = cape
                 trade_low  = price
                 position   = "IN"
 
         elif position == "IN":
-            trade_low    = min(trade_low, price)
-            cape_crashed = cape < cape_entry * (1 - CAPE_DROP_STOP)
+            trade_low = min(trade_low, price)
 
             if has_breadth:
-                do_sell = bearish_div or cape_crashed
-                reason  = "cape-drop-stop" if (cape_crashed and not bearish_div) else "bearish-divergence"
+                do_sell = bearish_div
+                reason  = "bearish-divergence"
+            elif not in_phase2:
+                do_sell = cape > CAPE_SELL_ABS
+                reason  = "cape-overvalued"
             else:
-                cape_recovered = cape > CAPE_SELL_ABS
-                do_sell = cape_recovered or cape_crashed
-                reason  = "cape-drop-stop" if (cape_crashed and not cape_recovered) else "cape-overvalued"
+                do_sell = False  # in phase 2 but breadth missing — hold
 
             if do_sell:
                 eff_exit  = price * (1 - SLIPPAGE)
@@ -192,8 +165,6 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                     "phase":            "breadth+CAPE" if has_breadth else "CAPE-only",
                 })
                 position = "OUT"
-                if "stop" in reason:
-                    stop_exit_date = date
 
         if position == "IN":
             values[date] = portfolio * (price * (1 - SLIPPAGE) / eff_entry)
@@ -303,9 +274,8 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     fig.suptitle(
         "S&P 500 Hybrid Backtest 1987–present\n"
         f"Pre-2007: CAPE-only (buy CAPE<{CAPE_BUY_ABS}, sell CAPE>{CAPE_SELL_ABS})  |  "
-        f"2007+: Breadth+CAPE+FwdPE (buy breadth<{BUY_THRESHOLD}/{BUY_THRESH_HI_CAPE}, "
-        f"sell caps {DIVERGENCE_BREADTH_CAP}/{CAP_HIGH_PE}/{CAP_VERY_HIGH_PE}/{CAP_DUAL_EXPENSIVE}, "
-        f"CAPE-drop stop {CAPE_DROP_STOP:.0%})\n"
+        f"2007+: Breadth+CAPE (buy breadth<{BUY_THRESHOLD}/{BUY_THRESH_HI_CAPE} when CAPE>{CAPE_BUY_HIGH}, "
+        f"sell cap {DIVERGENCE_BREADTH_CAP}/{CAP_EXPENSIVE} when CAPE>={CAPE_EXPENSIVE})\n"
         f"Starting capital: ${INITIAL_CAPITAL:,.0f}",
         fontsize=9, fontweight="bold"
     )
@@ -361,11 +331,11 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
                 label=f"Buy (pre-2007): <{CAPE_BUY_ABS}")
     ax3.axhline(CAPE_SELL_ABS,  color="orange", linestyle="--", linewidth=1.0,
                 label=f"Sell (pre-2007): >{CAPE_SELL_ABS}")
-    ax3.axhline(CAPE_VERY_HIGH, color="red",    linestyle=":",  linewidth=1.0,
-                label=f"Very High: >{CAPE_VERY_HIGH}")
+    ax3.axhline(CAPE_EXPENSIVE, color="red",    linestyle=":",  linewidth=1.0,
+                label=f"Expensive: >={CAPE_EXPENSIVE}")
     ax3.axvline(BREADTH_START, color="gray", linestyle=":", linewidth=1.2)
-    ax3.fill_between(df.index, df["cape"], CAPE_VERY_HIGH,
-                     where=df["cape"] >= CAPE_VERY_HIGH, color="red", alpha=0.10)
+    ax3.fill_between(df.index, df["cape"], CAPE_EXPENSIVE,
+                     where=df["cape"] >= CAPE_EXPENSIVE, color="red", alpha=0.10)
     ax3.set_ylabel("CAPE")
     ax3.legend(loc="upper left", fontsize=7)
     ax3.grid(True, alpha=0.3)
@@ -397,30 +367,14 @@ def main() -> None:
     print(f"Date range  : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
 
     current_cape = df["cape"].iloc[-1]
-    cape_tier = (
-        f"VERY HIGH (>{CAPE_VERY_HIGH})" if current_cape >= CAPE_VERY_HIGH
-        else f"HIGH ({CAPE_HIGH}–{CAPE_VERY_HIGH})" if current_cape >= CAPE_HIGH
-        else f"normal (<{CAPE_HIGH})"
-    )
-    current_fpe = df["forward_pe"].iloc[-1]
-    active_buy  = BUY_THRESH_HI_CAPE if current_cape > CAPE_BUY_HIGH else BUY_THRESHOLD
-    if current_cape >= CAPE_VERY_HIGH and not pd.isna(current_fpe) and current_fpe > FPE_HI_THRESH:
-        active_cap = CAP_DUAL_EXPENSIVE
-    elif current_cape >= CAPE_VERY_HIGH:
-        active_cap = CAP_VERY_HIGH_PE
-    elif current_cape >= CAPE_HIGH and not pd.isna(current_fpe) and current_fpe > FPE_MID_THRESH:
-        active_cap = CAP_MID_DUAL
-    elif current_cape >= CAPE_HIGH:
-        active_cap = CAP_HIGH_PE
-    else:
-        active_cap = DIVERGENCE_BREADTH_CAP
+    cape_tier    = f"expensive (>={CAPE_EXPENSIVE})" if current_cape >= CAPE_EXPENSIVE else f"normal (<{CAPE_EXPENSIVE})"
+    active_buy   = BUY_THRESH_HI_CAPE if current_cape > CAPE_BUY_HIGH else BUY_THRESHOLD
+    active_cap   = CAP_EXPENSIVE if current_cape >= CAPE_EXPENSIVE else DIVERGENCE_BREADTH_CAP
     print(f"Phase 1     : CAPE-only 1987–2006 "
           f"(buy CAPE<{CAPE_BUY_ABS}, sell CAPE>{CAPE_SELL_ABS})")
-    print(f"Phase 2     : Breadth+CAPE+FwdPE 2007+ "
-          f"(buy breadth<{active_buy}, sell cap<{active_cap}, "
-          f"CAPE-drop stop {CAPE_DROP_STOP:.0%})")
-    print(f"Valuation   : CAPE={current_cape:.1f} [{cape_tier}]  fwd PE={current_fpe:.1f}  "
-          f"→ sell cap={active_cap}")
+    print(f"Phase 2     : Breadth+CAPE 2007+ "
+          f"(buy breadth<{active_buy}, sell cap<{active_cap})")
+    print(f"Valuation   : CAPE={current_cape:.1f} [{cape_tier}]  → sell cap={active_cap}")
     print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")
 
     strategy, trades, open_trade = run_strategy(df)
