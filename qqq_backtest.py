@@ -38,10 +38,10 @@ def _parse_price(s: pd.Series) -> pd.Series:
 
 def load_data() -> pd.DataFrame:
     ndx = pd.read_csv(NDX_FILE)
-    ndx["Date"] = pd.to_datetime(ndx["date"], format="%Y-%m-%d")
+    ndx["Date"] = pd.to_datetime(ndx["Date"], format="%m/%d/%Y")
     ndx.set_index("Date", inplace=True)
-    ndx = ndx.rename(columns={"close": "price"})
-    ndx["price"] = ndx["price"].astype(float)
+    ndx = ndx.rename(columns={"Price": "price"})
+    ndx["price"] = _parse_price(ndx["price"])
 
     b200 = pd.read_csv(BREADTH_FILE)
     b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
