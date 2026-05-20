@@ -1,9 +1,9 @@
 """
-NASDAQ 100 Breadth Strategy — breadth data start to present
+NASDAQ 100 — Percent of Stocks Above 200-Day Average Strategy
 
-BUY  (while OUT): breadth200 < 26%
+BUY  (while OUT): pct200 < 26%
 SELL (while IN):  Bearish divergence — price rose ≥ 3% over 60 days
-                  while breadth200 fell ≥ 20 pts AND breadth200 < 60%
+                  while pct200 fell ≥ 20 pts AND pct200 < 60%
 """
 import numpy as np
 import pandas as pd
@@ -19,16 +19,16 @@ except Exception as _fetch_err:
 
 DATA_DIR     = Path(__file__).parent
 NDX_FILE     = DATA_DIR / "NASDAQ100.csv"
-BREADTH_FILE = DATA_DIR / "S&P 500 Stocks Above 200-Day Average Historical Data.csv"
+BREADTH_FILE = DATA_DIR / "Percent of Stocks Above 200-Day Average.csv"
 
 # ── Buy thresholds ────────────────────────────────────────────────────────────
-BUY_B200_THRESH = 26.0   # breadth200 must be below this
+BUY_B200_THRESH = 26.0   # pct200 must be below this
 
 # ── Sell — bearish divergence ─────────────────────────────────────────────────
 DIVERGENCE_WINDOW       = 60    # trading days lookback
 DIVERGENCE_PRICE_RISE   = 3.0   # % price rise over window
-DIVERGENCE_BREADTH_FALL = 20.0  # pts breadth200 drop over window
-DIVERGENCE_BREADTH_CAP  = 60.0  # breadth200 must be below this
+DIVERGENCE_BREADTH_FALL = 20.0  # pts pct200 drop over window
+DIVERGENCE_BREADTH_CAP  = 60.0  # pct200 must be below this
 
 # ── Shared ────────────────────────────────────────────────────────────────────
 INITIAL_CAPITAL = 10_000.0
@@ -48,19 +48,14 @@ def load_data() -> pd.DataFrame:
     ndx["price"] = _parse_price(ndx["price"])
 
     b200 = pd.read_csv(BREADTH_FILE)
-    b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
+    b200["Date"] = pd.to_datetime(b200["time"])
     b200.set_index("Date", inplace=True)
-    b200["Price"] = _parse_price(b200["Price"])
+    b200 = b200.rename(columns={"close": "breadth"})
 
-    merged = ndx[["price"]].join(
-        b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"
-    )
+    merged = ndx[["price"]].join(b200[["breadth"]], how="left")
     merged.sort_index(inplace=True)
-
-    # Only keep rows where breadth200 data is present (strategy starts here)
     merged = merged[merged["breadth"].notna()]
 
-    # Pre-compute divergence components
     pp = merged["price"].shift(DIVERGENCE_WINDOW)
     bp = merged["breadth"].shift(DIVERGENCE_WINDOW)
     merged["price_rose"]   = ((merged["price"] - pp) / pp * 100 >= DIVERGENCE_PRICE_RISE).fillna(False)
@@ -97,8 +92,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
         breadth_fell = bool(row["breadth_fell"])
 
         if position == "OUT":
-            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH
-            if do_buy:
+            if not pd.isna(breadth) and breadth < BUY_B200_THRESH:
                 portfolio -= COMMISSION
                 eff_entry  = price * (1 + SLIPPAGE)
                 raw_entry  = price
@@ -224,14 +218,12 @@ def print_trades(trades: list[dict], open_trade: dict | None = None) -> None:
 
 
 def print_sell_proximity(df: pd.DataFrame, open_trade: dict | None) -> None:
-    """Show how close the current position is to triggering the sell signal."""
     if open_trade is None:
         return
 
     last      = df.iloc[-1]
     last_date = df.index[-1]
 
-    # Look back exactly DIVERGENCE_WINDOW rows for the comparison point
     lookback_idx = max(0, len(df) - 1 - DIVERGENCE_WINDOW)
     past         = df.iloc[lookback_idx]
 
@@ -239,15 +231,14 @@ def print_sell_proximity(df: pd.DataFrame, open_trade: dict | None) -> None:
     price_then     = past["price"]
     price_rise_pct = (price_now - price_then) / price_then * 100
 
-    breadth_now    = last["breadth"]
-    breadth_then   = past["breadth"]
-    breadth_fall   = breadth_then - breadth_now   # positive = fell
+    breadth_now  = last["breadth"]
+    breadth_then = past["breadth"]
+    breadth_fall = breadth_then - breadth_now
 
     cap_ok = breadth_now < DIVERGENCE_BREADTH_CAP
 
-    def bar(value: float, threshold: float, invert: bool = False) -> str:
-        """20-char progress bar toward the threshold."""
-        ratio = min(value / threshold, 1.0) if threshold != 0 else 1.0
+    def bar(value: float, threshold: float) -> str:
+        ratio  = min(value / threshold, 1.0) if threshold != 0 else 1.0
         filled = round(ratio * 20)
         return f"[{'█' * filled}{'░' * (20 - filled)}] {ratio:.0%}"
 
@@ -260,21 +251,18 @@ def print_sell_proximity(df: pd.DataFrame, open_trade: dict | None) -> None:
     print(f"  {'Condition':<28} {'Current':>10}  {'Need':>10}  Progress")
     print(f"  {sep}")
 
-    # 1. Price rise
     status = "✓ MET" if price_met else f"need +{DIVERGENCE_PRICE_RISE - price_rise_pct:.1f}% more"
     print(f"  {'Price rise (' + str(DIVERGENCE_WINDOW) + 'd)':<28} "
           f"{price_rise_pct:>+9.1f}%  {DIVERGENCE_PRICE_RISE:>9.1f}%  "
           f"{bar(price_rise_pct, DIVERGENCE_PRICE_RISE)}  {status}")
 
-    # 2. Breadth200 fall
     status = "✓ MET" if breadth_met else f"need {DIVERGENCE_BREADTH_FALL - breadth_fall:.1f} more pts"
-    print(f"  {'Breadth200 fall (' + str(DIVERGENCE_WINDOW) + 'd)':<28} "
+    print(f"  {'Pct200 fall (' + str(DIVERGENCE_WINDOW) + 'd)':<28} "
           f"{breadth_fall:>+9.1f}pt  {DIVERGENCE_BREADTH_FALL:>9.1f}pt  "
           f"{bar(breadth_fall, DIVERGENCE_BREADTH_FALL)}  {status}")
 
-    # 3. Breadth200 cap
     status = "✓ MET" if cap_ok else f"need {breadth_now - DIVERGENCE_BREADTH_CAP:.1f}pt drop"
-    print(f"  {'Breadth200 < cap':<28} "
+    print(f"  {'Pct200 < cap':<28} "
           f"{breadth_now:>+9.1f}%   {'<' + str(DIVERGENCE_BREADTH_CAP) + '%':>9}   "
           f"{'✓ below cap' if cap_ok else '✗ above cap':32}  {status}")
 
@@ -291,15 +279,14 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     ax1, ax2, ax3 = axes
 
     fig.suptitle(
-        "NASDAQ 100 Breadth Strategy\n"
-        f"BUY: breadth200 < {BUY_B200_THRESH}%\n"
+        "NASDAQ 100 — Percent of Stocks Above 200-Day Average Strategy\n"
+        f"BUY: pct200 < {BUY_B200_THRESH}%\n"
         f"SELL: price rose ≥{DIVERGENCE_PRICE_RISE}% over {DIVERGENCE_WINDOW}d  AND  "
-        f"breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts  AND  breadth200 < {DIVERGENCE_BREADTH_CAP}%\n"
+        f"pct200 fell ≥{DIVERGENCE_BREADTH_FALL}pts  AND  pct200 < {DIVERGENCE_BREADTH_CAP}%\n"
         f"Starting capital: ${INITIAL_CAPITAL:,.0f}",
         fontsize=9, fontweight="bold"
     )
 
-    # ── Panel 1: portfolio ────────────────────────────────────────────────────
     ax1.plot(benchmark.index, benchmark, label="Buy & Hold NDX", color="#2196F3", linewidth=1.5)
     ax1.plot(strategy.index,  strategy,  label="Strategy", color="#FF5722", linewidth=1.5)
 
@@ -318,9 +305,8 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     ax1.legend(loc="upper left", fontsize=8)
     ax1.grid(True, alpha=0.3)
 
-    # ── Panel 2: breadth ──────────────────────────────────────────────────────
     ax2.plot(df.index, df["breadth"], color="#7B1FA2", linewidth=1.0,
-             label="% Above 200-Day MA (S&P 500)")
+             label="% Stocks Above 200-Day MA (all markets)")
     ax2.axhline(BUY_B200_THRESH, color="green", linestyle="--", linewidth=1.0,
                 label=f"Buy gate: <{BUY_B200_THRESH}%")
     ax2.axhline(DIVERGENCE_BREADTH_CAP, color="red", linestyle="--", linewidth=0.9,
@@ -334,11 +320,10 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     if all_exits:
         ax2.scatter(all_exits, df["breadth"].reindex(all_exits, method="nearest"),
                     marker="v", color="red", s=60, zorder=5)
-    ax2.set_ylabel("Breadth (%)")
+    ax2.set_ylabel("Pct200 (%)")
     ax2.legend(loc="upper left", fontsize=7)
     ax2.grid(True, alpha=0.3)
 
-    # ── Panel 3: NDX price ────────────────────────────────────────────────────
     ax3.plot(df.index, df["price"], color="#546E7A", linewidth=1.0, label="NASDAQ 100")
     if all_entries:
         ax3.scatter(all_entries, df["price"].reindex(all_entries, method="nearest"),
@@ -353,7 +338,7 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     ax3.xaxis.set_major_locator(mdates.YearLocator(2))
     fig.autofmt_xdate()
 
-    out = DATA_DIR / "qqq_performance.png"
+    out = DATA_DIR / "qqq_pct200_performance.png"
     plt.tight_layout()
     plt.savefig(out, dpi=150, bbox_inches="tight")
     print(f"\nChart saved → {out}")
@@ -363,9 +348,9 @@ def main() -> None:
     print("Loading data...")
     df = load_data()
     print(f"Date range  : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
-    print(f"Buy signal  : breadth200 < {BUY_B200_THRESH}%")
-    print(f"Sell signal : price rose ≥{DIVERGENCE_PRICE_RISE}% AND breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts")
-    print(f"              over {DIVERGENCE_WINDOW} days, while breadth200 < {DIVERGENCE_BREADTH_CAP}%")
+    print(f"Buy signal  : pct200 < {BUY_B200_THRESH}%")
+    print(f"Sell signal : price rose ≥{DIVERGENCE_PRICE_RISE}% AND pct200 fell ≥{DIVERGENCE_BREADTH_FALL}pts")
+    print(f"              over {DIVERGENCE_WINDOW} days, while pct200 < {DIVERGENCE_BREADTH_CAP}%")
     print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")
 
     benchmark                    = run_benchmark(df)

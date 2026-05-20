@@ -5,7 +5,6 @@ Uses Playwright headless browser to bypass Cloudflare protection.
 Instruments updated:
   - NASDAQ100.csv
   - S&P 500 Stocks Above 200-Day Average Historical Data.csv
-  - S&P 500 Stocks Above 50-Day Average Historical Data.csv
 """
 from __future__ import annotations
 
@@ -28,11 +27,6 @@ INSTRUMENTS = [
         "name": "S&P 500 Above 200-Day MA",
         "url": "https://www.investing.com/indices/sp-500-stocks-above-200-day-average-historical-data",
         "csv_file": DATA_DIR / "S&P 500 Stocks Above 200-Day Average Historical Data.csv",
-    },
-    {
-        "name": "S&P 500 Above 50-Day MA",
-        "url": "https://www.investing.com/indices/s-p-500-stocks-above-50-day-average-historical-data",
-        "csv_file": DATA_DIR / "S&P 500 Stocks Above 50-Day Average Historical Data.csv",
     },
 ]
 
