@@ -2,9 +2,13 @@
 Fetch latest historical data from investing.com and update local CSV files.
 Uses Playwright headless browser to bypass Cloudflare protection.
 
-Instruments updated:
+Instruments updated by fetch_all_updates():
   - NASDAQ100.csv
-  - S&P 500 Stocks Above 200-Day Average Historical Data.csv
+  - S5TH.csv
+
+Instruments updated by fetch_spy_updates():
+  - SPX.csv
+  - S5TH.csv
 """
 from __future__ import annotations
 
@@ -24,11 +28,19 @@ INSTRUMENTS = [
         "csv_file": DATA_DIR / "NASDAQ100.csv",
     },
     {
+        "name": "S&P 500",
+        "url": "https://www.investing.com/indices/us-spx-500-historical-data",
+        "csv_file": DATA_DIR / "SPX.csv",
+    },
+    {
         "name": "S&P 500 Above 200-Day MA",
         "url": "https://www.investing.com/indices/sp-500-stocks-above-200-day-average-historical-data",
-        "csv_file": DATA_DIR / "S&P 500 Stocks Above 200-Day Average Historical Data.csv",
+        "csv_file": DATA_DIR / "S5TH.csv",
     },
 ]
+
+# Subset used by spy_backtest.py (no NASDAQ 100)
+SPY_INSTRUMENTS = [i for i in INSTRUMENTS if i["name"] != "NASDAQ 100"]
 
 CSV_COLUMNS = ["Date", "Price", "Open", "High", "Low", "Vol.", "Change %"]
 
@@ -186,10 +198,7 @@ def _fetch_instrument(page, instrument: dict, verbose: bool) -> int:
     return len(new_rows)
 
 
-def fetch_all_updates(verbose: bool = True) -> None:
-    if verbose:
-        print("Fetching latest data from investing.com...")
-
+def _fetch_instruments(instruments: list[dict], verbose: bool) -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
@@ -204,13 +213,26 @@ def fetch_all_updates(verbose: bool = True) -> None:
         page = context.new_page()
 
         total = 0
-        for instrument in INSTRUMENTS:
+        for instrument in instruments:
             total += _fetch_instrument(page, instrument, verbose)
 
         browser.close()
 
     if verbose:
         print(f"Done. Total new rows added: {total}\n")
+
+
+def fetch_all_updates(verbose: bool = True) -> None:
+    if verbose:
+        print("Fetching latest data from investing.com...")
+    _fetch_instruments(INSTRUMENTS, verbose)
+
+
+def fetch_spy_updates(verbose: bool = True) -> None:
+    """Fetch SPX + S&P 500 breadth only (no NASDAQ 100)."""
+    if verbose:
+        print("Fetching latest S&P 500 data from investing.com...")
+    _fetch_instruments(SPY_INSTRUMENTS, verbose)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ except Exception as _fetch_err:
 
 DATA_DIR     = Path(__file__).parent
 NDX_FILE     = DATA_DIR / "NASDAQ100.csv"
-BREADTH_FILE = DATA_DIR / "Percent of Stocks Above 200-Day Average.csv"
+BREADTH_FILE = DATA_DIR / "MMTH.csv"
 
 # ── Buy thresholds ────────────────────────────────────────────────────────────
 BUY_B200_THRESH = 26.0   # pct200 must be below this
