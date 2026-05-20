@@ -11,6 +11,12 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from pathlib import Path
 
+try:
+    from fetch_investing_data import fetch_all_updates
+    fetch_all_updates(verbose=True)
+except Exception as _fetch_err:
+    print(f"[data fetch skipped: {_fetch_err}]")
+
 DATA_DIR     = Path(__file__).parent
 NDX_FILE     = DATA_DIR / "NASDAQ100.csv"
 BREADTH_FILE = DATA_DIR / "S&P 500 Stocks Above 200-Day Average Historical Data.csv"
@@ -196,7 +202,7 @@ def print_metrics(strat: dict, bench: dict) -> None:
     sep  = "=" * len(hdr)
     print(f"\n{sep}\n{hdr}\n{sep}")
     for k in keys:
-        print(f"  {k:<20}{strat.get(k,'—'):>{col}}{bench.get(k,'—'):>{col}}")
+        print(f"  {k:<20}{strat.get(k, '—'):>{col}}{bench.get(k, '—'):>{col}}")
     print(sep)
 
 
@@ -229,6 +235,66 @@ def print_trades(trades: list[dict], open_trade: dict | None = None) -> None:
         )
 
 
+def print_sell_proximity(df: pd.DataFrame, open_trade: dict | None) -> None:
+    """Show how close the current position is to triggering the sell signal."""
+    if open_trade is None:
+        return
+
+    last      = df.iloc[-1]
+    last_date = df.index[-1]
+
+    # Look back exactly DIVERGENCE_WINDOW rows for the comparison point
+    lookback_idx = max(0, len(df) - 1 - DIVERGENCE_WINDOW)
+    past         = df.iloc[lookback_idx]
+
+    price_now      = last["price"]
+    price_then     = past["price"]
+    price_rise_pct = (price_now - price_then) / price_then * 100
+
+    breadth_now    = last["breadth"]
+    breadth_then   = past["breadth"]
+    breadth_fall   = breadth_then - breadth_now   # positive = fell
+
+    cap_ok = breadth_now < DIVERGENCE_BREADTH_CAP
+
+    def bar(value: float, threshold: float, invert: bool = False) -> str:
+        """20-char progress bar toward the threshold."""
+        ratio = min(value / threshold, 1.0) if threshold != 0 else 1.0
+        filled = round(ratio * 20)
+        return f"[{'█' * filled}{'░' * (20 - filled)}] {ratio:.0%}"
+
+    price_met   = price_rise_pct >= DIVERGENCE_PRICE_RISE
+    breadth_met = breadth_fall   >= DIVERGENCE_BREADTH_FALL
+    all_met     = price_met and breadth_met and cap_ok
+
+    sep = "─" * 72
+    print(f"\n── Sell signal proximity  (as of {last_date.strftime('%Y-%m-%d')}) ──\n")
+    print(f"  {'Condition':<28} {'Current':>10}  {'Need':>10}  Progress")
+    print(f"  {sep}")
+
+    # 1. Price rise
+    status = "✓ MET" if price_met else f"need +{DIVERGENCE_PRICE_RISE - price_rise_pct:.1f}% more"
+    print(f"  {'Price rise (' + str(DIVERGENCE_WINDOW) + 'd)':<28} "
+          f"{price_rise_pct:>+9.1f}%  {DIVERGENCE_PRICE_RISE:>9.1f}%  "
+          f"{bar(price_rise_pct, DIVERGENCE_PRICE_RISE)}  {status}")
+
+    # 2. Breadth200 fall
+    status = "✓ MET" if breadth_met else f"need {DIVERGENCE_BREADTH_FALL - breadth_fall:.1f} more pts"
+    print(f"  {'Breadth200 fall (' + str(DIVERGENCE_WINDOW) + 'd)':<28} "
+          f"{breadth_fall:>+9.1f}pt  {DIVERGENCE_BREADTH_FALL:>9.1f}pt  "
+          f"{bar(breadth_fall, DIVERGENCE_BREADTH_FALL)}  {status}")
+
+    # 3. Breadth200 cap
+    status = "✓ MET" if cap_ok else f"need {breadth_now - DIVERGENCE_BREADTH_CAP:.1f}pt drop"
+    print(f"  {'Breadth200 < cap':<28} "
+          f"{breadth_now:>+9.1f}%   {'<' + str(DIVERGENCE_BREADTH_CAP) + '%':>9}   "
+          f"{'✓ below cap' if cap_ok else '✗ above cap':32}  {status}")
+
+    print(f"  {sep}")
+    verdict = "YES — sell signal ACTIVE" if all_met else "NO  — not yet triggered"
+    print(f"  All 3 conditions met: {verdict}\n")
+
+
 def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     fig, axes = plt.subplots(
         3, 1, figsize=(16, 12), sharex=True,
@@ -247,7 +313,7 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
 
     # ── Panel 1: portfolio ────────────────────────────────────────────────────
     ax1.plot(benchmark.index, benchmark, label="Buy & Hold NDX", color="#2196F3", linewidth=1.5)
-    ax1.plot(strategy.index,  strategy,  label="Breadth Strategy", color="#FF5722", linewidth=1.5)
+    ax1.plot(strategy.index,  strategy,  label="Strategy", color="#FF5722", linewidth=1.5)
 
     all_entries = [t["entry_date"] for t in trades] + (
         [open_trade["entry_date"]] if open_trade else [])
@@ -318,11 +384,19 @@ def main() -> None:
     print(f"              over {DIVERGENCE_WINDOW} days, while breadth200 < {DIVERGENCE_BREADTH_CAP}%")
     print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")
 
+    benchmark                    = run_benchmark(df)
     strategy, trades, open_trade = run_strategy(df)
-    benchmark = run_benchmark(df)
 
-    print_metrics(compute_metrics(strategy, trades), compute_metrics(benchmark))
+    print_metrics(
+        compute_metrics(strategy, trades),
+        compute_metrics(benchmark),
+    )
+
+    print("\n── Strategy trades ──")
     print_trades(trades, open_trade)
+
+    print_sell_proximity(df, open_trade)
+
     plot_results(df, strategy, benchmark, trades, open_trade)
 
 
