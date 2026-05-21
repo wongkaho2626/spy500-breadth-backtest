@@ -1,9 +1,9 @@
 """
 SOXX (iShares Semiconductor ETF) Breadth Strategy
 
-BUY  (while OUT): breadth200 < 26%
+BUY  (while OUT): breadth200 < 18%
 SELL (while IN):  Bearish divergence — price rose ≥ 5% over 60 days
-                  while breadth200 fell ≥ 15 pts AND breadth200 < 55%
+                  while breadth200 fell ≥ 20 pts AND breadth200 < 50%
 """
 import numpy as np
 import pandas as pd
@@ -19,10 +19,10 @@ BREADTH_FILE = DATA_DIR / "S5TH.csv"
 BUY_B200_THRESH = 18.0   # breadth200 must be below this
 
 # ── Sell — bearish divergence ─────────────────────────────────────────────────
-DIVERGENCE_WINDOW       = 50    # trading days lookback
-DIVERGENCE_PRICE_RISE   = 3.0   # % price rise over window
-DIVERGENCE_BREADTH_FALL = 8.0   # pts breadth200 drop over window
-DIVERGENCE_BREADTH_CAP  = 55.0  # breadth200 must be below this
+DIVERGENCE_WINDOW       = 60    # trading days lookback
+DIVERGENCE_PRICE_RISE   = 5.0   # % price rise over window
+DIVERGENCE_BREADTH_FALL = 20.0  # pts breadth200 drop over window
+DIVERGENCE_BREADTH_CAP  = 50.0  # breadth200 must be below this
 
 # ── Shared ────────────────────────────────────────────────────────────────────
 INITIAL_CAPITAL = 10_000.0
@@ -97,7 +97,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                 position   = "IN"
 
         elif position == "IN":
-            trade_low = min(trade_low, price)
+            trade_low   = min(trade_low, price)
             bearish_div = price_rose and breadth_fell and breadth < DIVERGENCE_BREADTH_CAP
 
             if bearish_div:
