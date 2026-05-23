@@ -2,6 +2,9 @@
 NASDAQ 100 Breadth Strategy — breadth data start to present
 
 BUY  (while OUT): breadth200 < 26%
+                  AND at least 1 of 2 vote:
+                    • VIX > 30  (fear spike / panic bottom)
+                    • price > MA200  (uptrend pullback — safe to buy immediately)
 SELL (while IN):  Bearish divergence — price rose ≥ 3% over 60 days
                   while breadth200 fell ≥ 20 pts AND breadth200 < 60%
 """
@@ -20,9 +23,12 @@ except Exception as _fetch_err:
 DATA_DIR     = Path(__file__).parent
 NDX_FILE     = DATA_DIR / "NASDAQ100.csv"
 BREADTH_FILE = DATA_DIR / "S5TH.csv"
+VIX_FILE     = DATA_DIR / "VIX.csv"
 
 # ── Buy thresholds ────────────────────────────────────────────────────────────
 BUY_B200_THRESH = 26.0   # breadth200 must be below this
+VIX_BUY_THRESH  = 30.0   # VIX vote: fear spike (VIX > 30)
+MA200_WINDOW    = 200     # MA200 vote: price above 200-day moving average
 
 # ── Sell — bearish divergence ─────────────────────────────────────────────────
 DIVERGENCE_WINDOW       = 60    # trading days lookback
@@ -52,13 +58,31 @@ def load_data() -> pd.DataFrame:
     b200.set_index("Date", inplace=True)
     b200["Price"] = _parse_price(b200["Price"])
 
+    vix = pd.read_csv(VIX_FILE)
+    vix.columns = [c.strip().strip('"').lstrip("﻿") for c in vix.columns]
+    vix["Date"] = pd.to_datetime(vix["Date"], format="%m/%d/%Y")
+    vix.set_index("Date", inplace=True)
+    vix["vix"] = _parse_price(vix["Price"])
+
     merged = ndx[["price"]].join(
         b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"
     )
+    merged = merged.join(vix[["vix"]], how="left")
     merged.sort_index(inplace=True)
 
     # Only keep rows where breadth200 data is present (strategy starts here)
     merged = merged[merged["breadth"].notna()]
+
+    merged["vix"]   = merged["vix"].ffill()
+    merged["ma200"] = merged["price"].rolling(MA200_WINDOW).mean()
+
+    # Vote gate: at least 1 of [VIX > 30, price > MA200] must be True
+    # NaN → True (don't restrict when data is missing)
+    merged["vix_vote"]   = merged["vix"].apply(
+        lambda v: True if pd.isna(v) else v > VIX_BUY_THRESH)
+    merged["ma200_vote"] = merged.apply(
+        lambda r: True if pd.isna(r["ma200"]) else r["price"] > r["ma200"], axis=1)
+    merged["vote_gate"]  = merged["vix_vote"] | merged["ma200_vote"]
 
     # Pre-compute divergence components
     pp = merged["price"].shift(DIVERGENCE_WINDOW)
@@ -97,7 +121,8 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
         breadth_fell = bool(row["breadth_fell"])
 
         if position == "OUT":
-            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH
+            vote_gate = bool(row["vote_gate"])
+            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate
             if do_buy:
                 portfolio -= COMMISSION
                 eff_entry  = price * (1 + SLIPPAGE)
@@ -105,6 +130,9 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                 entry_date = date
                 trade_low  = price
                 position   = "IN"
+                buy_trigger = (("VIX" if row["vix_vote"] else "") +
+                               ("+" if row["vix_vote"] and row["ma200_vote"] else "") +
+                               ("MA200" if row["ma200_vote"] else ""))
 
         elif position == "IN":
             trade_low = min(trade_low, price)
@@ -122,6 +150,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                     "return_pct":       gross_ret * 100,
                     "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
                     "accumulated":      portfolio,
+                    "buy_trigger":      buy_trigger,
                     "sell_reason":      "bearish-divergence",
                 })
                 position = "OUT"
@@ -144,6 +173,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
             "return_pct":       (eff_last - eff_entry) / eff_entry * 100,
             "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
             "accumulated":      portfolio * (eff_last / eff_entry),
+            "buy_trigger":      buy_trigger,
         }
 
     return pd.Series(values, name="strategy"), trades, open_trade
@@ -199,7 +229,7 @@ def print_trades(trades: list[dict], open_trade: dict | None = None) -> None:
         print("\nNo completed trades.")
         return
     hdr = (f"\n{'#':>3}  {'Entry':10}  {'Exit':10}  {'Held':>7}  {'Entry $':>9}  {'Exit $':>9}"
-           f"  {'Return':>8}  {'Drawdown':>9}  {'Portfolio':>12}  Reason")
+           f"  {'Return':>8}  {'Drawdown':>9}  {'Portfolio':>12}  {'Buy trigger':>11}  Sell reason")
     print(hdr)
     print("-" * len(hdr))
     for i, t in enumerate(trades, 1):
@@ -209,7 +239,7 @@ def print_trades(trades: list[dict], open_trade: dict | None = None) -> None:
             f"{t['exit_date'].strftime('%Y-%m-%d'):10}  {_days_str(days):>7}  "
             f"{t['entry_price']:>9.2f}  {t['exit_price']:>9.2f}  "
             f"{t['return_pct']:>+7.1f}%  {t['max_drawdown_pct']:>+8.1f}%  "
-            f"${t['accumulated']:>11,.0f}  {t.get('sell_reason','—')}"
+            f"${t['accumulated']:>11,.0f}  {t.get('buy_trigger','—'):>11}  {t.get('sell_reason','—')}"
         )
     if open_trade:
         days = (open_trade["current_date"] - open_trade["entry_date"]).days
@@ -218,7 +248,7 @@ def print_trades(trades: list[dict], open_trade: dict | None = None) -> None:
             f"{'(open)':10}  {_days_str(days):>7}  "
             f"{open_trade['entry_price']:>9.2f}  {open_trade['current_price']:>9.2f}  "
             f"{open_trade['return_pct']:>+7.1f}%  {open_trade['max_drawdown_pct']:>+8.1f}%  "
-            f"${open_trade['accumulated']:>11,.0f}  "
+            f"${open_trade['accumulated']:>11,.0f}  {open_trade.get('buy_trigger','—'):>11}  "
             f"still holding (as of {open_trade['current_date'].strftime('%Y-%m-%d')})"
         )
 
@@ -291,8 +321,8 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     ax1, ax2, ax3 = axes
 
     fig.suptitle(
-        "NASDAQ 100 Breadth Strategy\n"
-        f"BUY: breadth200 < {BUY_B200_THRESH}%\n"
+        "NASDAQ 100 Breadth Strategy  (+Voting Gate)\n"
+        f"BUY: breadth200 < {BUY_B200_THRESH}%  AND  (VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW})  [≥1 of 2]\n"
         f"SELL: price rose ≥{DIVERGENCE_PRICE_RISE}% over {DIVERGENCE_WINDOW}d  AND  "
         f"breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts  AND  breadth200 < {DIVERGENCE_BREADTH_CAP}%\n"
         f"Starting capital: ${INITIAL_CAPITAL:,.0f}",
@@ -340,6 +370,7 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
 
     # ── Panel 3: NDX price ────────────────────────────────────────────────────
     ax3.plot(df.index, df["price"], color="#546E7A", linewidth=1.0, label="NASDAQ 100")
+    ax3.plot(df.index, df["ma200"], color="orange",  linewidth=0.8, linestyle="--", label=f"MA{MA200_WINDOW}")
     if all_entries:
         ax3.scatter(all_entries, df["price"].reindex(all_entries, method="nearest"),
                     marker="^", color="green", s=50, zorder=5)
@@ -348,6 +379,7 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
                     marker="v", color="red", s=50, zorder=5)
     ax3.set_ylabel("NDX")
     ax3.set_xlabel("Date")
+    ax3.legend(loc="upper left", fontsize=7)
     ax3.grid(True, alpha=0.3)
     ax3.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
     ax3.xaxis.set_major_locator(mdates.YearLocator(2))
@@ -364,6 +396,7 @@ def main() -> None:
     df = load_data()
     print(f"Date range  : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
     print(f"Buy signal  : breadth200 < {BUY_B200_THRESH}%")
+    print(f"Vote gate   : VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW}  (≥1 of 2 must agree)")
     print(f"Sell signal : price rose ≥{DIVERGENCE_PRICE_RISE}% AND breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts")
     print(f"              over {DIVERGENCE_WINDOW} days, while breadth200 < {DIVERGENCE_BREADTH_CAP}%")
     print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")

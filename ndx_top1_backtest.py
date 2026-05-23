@@ -5,6 +5,12 @@ Same buy/sell/divergence signals as qqq_backtest.py, but on BUY we
 allocate 100% of capital to the current year's #1 NDX holding
 (from nasdaq100_top_holdings.csv).  Annual rebalancing at each year start
 during an open trade.  Compared against the plain QQQ index strategy.
+
+BUY  (while OUT): breadth200 < 26%
+                  AND at least 1 of 2 vote:
+                    • VIX > 30  (fear spike / panic bottom)
+                    • price > MA200  (uptrend pullback)
+SELL (while IN):  Bearish divergence (unchanged)
 """
 
 import numpy as np
@@ -16,11 +22,14 @@ from pathlib import Path
 DATA_DIR      = Path(__file__).parent
 NDX_FILE      = DATA_DIR / "NASDAQ100.csv"
 BREADTH_FILE  = DATA_DIR / "S5TH.csv"
+VIX_FILE      = DATA_DIR / "VIX.csv"
 HOLDINGS_FILE = DATA_DIR / "NASDAQ100" / "nasdaq100_top_holdings.csv"
 PRICES_DIR    = DATA_DIR / "NASDAQ100" / "stock_prices"
 
-# ── Signals (identical to qqq_backtest.py) ───────────────────────────────────
+# ── Signals ───────────────────────────────────────────────────────────────────
 BUY_B200_THRESH         = 26.0
+VIX_BUY_THRESH          = 30.0   # VIX vote: fear spike
+MA200_WINDOW            = 200     # MA200 vote: price above 200-day MA
 DIVERGENCE_WINDOW       = 60
 DIVERGENCE_PRICE_RISE   = 3.0
 DIVERGENCE_BREADTH_FALL = 20.0
@@ -64,11 +73,29 @@ def load_ndx_breadth() -> pd.DataFrame:
     b200.set_index("Date", inplace=True)
     b200["Price"] = _parse_price(b200["Price"])
 
+    vix = pd.read_csv(VIX_FILE)
+    vix.columns = [c.strip().strip('"').lstrip("﻿") for c in vix.columns]
+    vix["Date"] = pd.to_datetime(vix["Date"], format="%m/%d/%Y")
+    vix.set_index("Date", inplace=True)
+    vix["vix"] = _parse_price(vix["Price"])
+
     merged = ndx[["price"]].join(
         b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"
     )
+    merged = merged.join(vix[["vix"]], how="left")
     merged.sort_index(inplace=True)
     merged = merged[merged["breadth"].notna()]
+
+    merged["vix"]   = merged["vix"].ffill()
+    merged["ma200"] = merged["price"].rolling(MA200_WINDOW).mean()
+
+    # Vote gate: at least 1 of [VIX > 30, price > MA200] must be True
+    # NaN → True (don't restrict when data is missing)
+    merged["vix_vote"]   = merged["vix"].apply(
+        lambda v: True if pd.isna(v) else v > VIX_BUY_THRESH)
+    merged["ma200_vote"] = merged.apply(
+        lambda r: True if pd.isna(r["ma200"]) else r["price"] > r["ma200"], axis=1)
+    merged["vote_gate"]  = merged["vix_vote"] | merged["ma200_vote"]
 
     pp = merged["price"].shift(DIVERGENCE_WINDOW)
     bp = merged["breadth"].shift(DIVERGENCE_WINDOW)
@@ -202,8 +229,9 @@ def run_strategy(
         prev_year = year
 
         # ── State machine ──────────────────────────────────────────────────
+        vote_gate = bool(row["vote_gate"])
         if position == "OUT":
-            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH
+            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate
             if do_buy:
                 comp = holdings.get(year, [])
                 if not comp:
@@ -369,11 +397,11 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     ax1, ax2, ax3 = axes
 
     fig.suptitle(
-        "NASDAQ 100 Breadth Strategy — Top-2 Holdings Basket\n"
-        f"BUY: breadth200 < {BUY_B200_THRESH}%  |  "
+        "NASDAQ 100 Breadth Strategy — NDX Top-1 Holding  (+Voting Gate)\n"
+        f"BUY: breadth200 < {BUY_B200_THRESH}%  AND  (VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW})  [≥1 of 2]  |  "
         f"SELL: price ≥{DIVERGENCE_PRICE_RISE}% over {DIVERGENCE_WINDOW}d "
         f"AND breadth fell ≥{DIVERGENCE_BREADTH_FALL}pts AND breadth < {DIVERGENCE_BREADTH_CAP}%\n"
-        f"Starting capital: ${INITIAL_CAPITAL:,.0f}  |  Annual rebalancing to year's top-2 holdings",
+        f"Starting capital: ${INITIAL_CAPITAL:,.0f}  |  Annual rebalancing to year's top-1 holding",
         fontsize=9, fontweight="bold"
     )
 
@@ -448,8 +476,9 @@ def run_qqq_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | No
         price_rose   = bool(row["price_rose"])
         breadth_fell = bool(row["breadth_fell"])
 
+        vote_gate = bool(row["vote_gate"])
         if position == "OUT":
-            if not pd.isna(breadth) and breadth < BUY_B200_THRESH:
+            if not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate:
                 portfolio -= COMMISSION
                 eff_entry  = price * (1 + SLIPPAGE)
                 raw_entry  = price
