@@ -56,6 +56,109 @@ NAME_TO_TICKER = {
 }
 
 
+# ── Data fetching ─────────────────────────────────────────────────────────────
+
+def _fmt_vol(vol: float) -> str:
+    if pd.isna(vol) or vol == 0:
+        return ""
+    if vol >= 1e9:
+        return f"{vol/1e9:.2f}B"
+    if vol >= 1e6:
+        return f"{vol/1e6:.2f}M"
+    return f"{vol/1e3:.2f}K"
+
+
+def _update_investing_csv(path: Path, yf_ticker: str, yf) -> None:
+    """Append new rows (newest-first) to an Investing.com-style CSV."""
+    df_ex = pd.read_csv(path)
+    df_ex["_date"] = pd.to_datetime(
+        df_ex["Date"].astype(str).str.strip('"'), format="%m/%d/%Y"
+    )
+    last_date   = df_ex["_date"].max()
+    fetch_start = last_date + pd.Timedelta(days=1)
+    today       = pd.Timestamp.today().normalize()
+    if fetch_start > today:
+        print(f"[fetch] {path.name} already up to date ({last_date.date()}).")
+        return
+
+    print(f"[fetch] Fetching {yf_ticker} from {fetch_start.date()} …")
+    raw = yf.Ticker(yf_ticker).history(start=fetch_start, auto_adjust=True)
+    if raw.empty:
+        print(f"[fetch] No new data for {yf_ticker}.")
+        return
+
+    rows = []
+    for date, row in raw.sort_index(ascending=False).iterrows():
+        rows.append(
+            f'"{date.strftime("%m/%d/%Y")}"'
+            f',"{row["Close"]:,.2f}"'
+            f',"{row["Open"]:,.2f}"'
+            f',"{row["High"]:,.2f}"'
+            f',"{row["Low"]:,.2f}"'
+            f',"{_fmt_vol(row["Volume"])}"'
+            f',""'
+        )
+
+    existing = path.read_text(encoding="utf-8-sig")
+    lines    = existing.splitlines(keepends=True)
+    path.write_text(lines[0] + "\n".join(rows) + "\n" + "".join(lines[1:]), encoding="utf-8-sig")
+    print(f"[fetch] {path.name}: added {len(rows)} row(s) → latest {raw.index.max().date()}.")
+
+
+def _update_stock_price_csvs(yf) -> None:
+    """Append new OHLCV rows to each stock CSV in PRICES_DIR."""
+    csvs = [f for f in PRICES_DIR.glob("*.csv") if f.stem != "_download_summary"]
+    if not csvs:
+        return
+    for path in sorted(csvs):
+        ticker = path.stem
+        df_ex = pd.read_csv(path, index_col=0)
+        idx   = pd.to_datetime(df_ex.index, format="mixed", utc=True)
+        last  = idx.max().normalize().replace(tzinfo=None)
+        start  = last + pd.Timedelta(days=1)
+        today  = pd.Timestamp.today().normalize()
+        if start > today:
+            continue
+        raw = yf.Ticker(ticker).history(start=start, auto_adjust=True)
+        if raw.empty:
+            continue
+        raw.index = raw.index.normalize()
+        new_rows = raw[["Close", "High", "Low", "Open", "Volume"]].copy()
+        new_rows.index.name = "Date"
+        new_rows.to_csv(path, mode="a", header=False)
+        print(f"[fetch] {ticker}.csv: added {len(new_rows)} row(s) → latest {new_rows.index.max().date()}.")
+
+
+def fetch_latest_data() -> None:
+    """Pull the latest market data into local CSVs via yfinance."""
+    try:
+        import yfinance as yf
+    except ImportError:
+        print("[fetch] yfinance not installed — skipping. Run: pip install yfinance")
+        return
+
+    _update_investing_csv(NDX_FILE, "^NDX", yf)
+    _update_stock_price_csvs(yf)
+
+    # S5TH (% of S&P 500 above 200-day MA) is a Bloomberg/Investing.com
+    # proprietary series — not available via free APIs.  Download manually from
+    # https://www.investing.com/indices/s-p-500-above-200-dma-historical-data
+    # and replace S5TH.csv.
+    df_b = pd.read_csv(BREADTH_FILE)
+    df_b["_date"] = pd.to_datetime(
+        df_b["Date"].astype(str).str.strip('"'), format="%m/%d/%Y"
+    )
+    last_b = df_b["_date"].max()
+    lag    = (pd.Timestamp.today().normalize() - last_b).days
+    if lag > 5:
+        print(
+            f"[fetch] WARNING: S5TH.csv is {lag} days old (last: {last_b.date()}).\n"
+            "        Download the latest data from Investing.com and replace S5TH.csv."
+        )
+    else:
+        print(f"[fetch] S5TH.csv is up to date ({last_b.date()}).")
+
+
 # ── Data loading ─────────────────────────────────────────────────────────────
 
 def _parse_price(s: pd.Series) -> pd.Series:
@@ -635,6 +738,7 @@ def print_metrics_3col(qqq: dict, top1: dict, bench: dict) -> None:
 
 
 def main() -> None:
+    fetch_latest_data()
     print("Loading NDX + breadth data...")
     df = load_ndx_breadth()
 
