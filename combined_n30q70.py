@@ -48,8 +48,9 @@ CONTRIB_MONTH      = 4         # April
 CONTRIB_DAY        = 6
 CONTRIB_START_YEAR = 2012
 
-NDXA_PCT = 0.30
-QQQB_PCT = 0.70
+NDXA_PCT   = 0.30
+QQQB_PCT   = 0.70
+START_DATE = pd.Timestamp("2001-01-01")
 
 # ── Name → ticker ─────────────────────────────────────────────────────────────
 NAME_TO_TICKER = {
@@ -692,6 +693,7 @@ def export_csvs(
 def main() -> None:
     breadth = _load_breadth()
     df_ndx  = load_ndx(breadth)
+    df_ndx  = df_ndx[df_ndx.index >= START_DATE]
 
     print(f"Backtest period : {df_ndx.index[0].date()} → {df_ndx.index[-1].date()}")
     print(f"Initial capital : ${INITIAL_CAPITAL:,.0f}")
