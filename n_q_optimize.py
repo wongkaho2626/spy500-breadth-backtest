@@ -32,7 +32,7 @@ ANNUAL_CONTRIB     = 26_880.0
 CONTRIB_MONTH      = 4
 CONTRIB_DAY        = 6
 CONTRIB_START_YEAR = 2012
-START_DATE         = pd.Timestamp("2001-01-01")
+START_DATE         = pd.Timestamp("2011-01-01")
 
 NAME_TO_TICKER = {
     "Cisco Systems Inc.":    "CSCO",
