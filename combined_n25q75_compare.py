@@ -277,6 +277,142 @@ def run_signal(df: pd.DataFrame, h1: dict, stock_prices: dict) -> tuple[pd.Serie
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Strategy 1b: Signal + April Rebalance
+# ─────────────────────────────────────────────────────────────────────────────
+
+def run_signal_rebal(df: pd.DataFrame, h1: dict, stock_prices: dict) -> tuple[pd.Series, list[dict], list[dict]]:
+    """Signal strategy with full 25/75 rebalance every April while in a trade."""
+    common_idx    = df.index.sort_values()
+    contrib_dates = _contribution_dates(common_idx)
+
+    n_pos = "OUT"; n_basket: dict[str, float] = {}; n_cash = INITIAL_CAPITAL * NDXA_PCT
+    n_orig_val = 0.0; n_mid_contrib = 0.0; prev_year = None
+
+    q_pos = "OUT"; q_shares = 0.0; q_cash = INITIAL_CAPITAL * QQQB_PCT
+    q_entry_price = 0.0; q_mid_contrib = 0.0
+
+    trade_open = False; pending_contrib = 0.0
+    trades: list[dict] = []
+    rebal_log: list[dict] = []
+    comb_entry_date = None; comb_entry_val = 0.0; comb_mid_contribs = 0.0
+    values: dict = {}
+
+    for date in common_idx:
+        row     = df.loc[date]
+        n_price = float(row["price"])
+        breadth = float(row["breadth"])
+        year    = date.year
+
+        # Contribution + rebalance (if in trade) or pending cash (if out)
+        if date in contrib_dates:
+            if not trade_open:
+                pending_contrib += ANNUAL_CONTRIB
+            else:
+                # Full rebalance: liquidate both legs, add contrib, re-buy at 25/75
+                n_val_pre = _basket_value(n_basket, stock_prices, date) if n_pos == "IN" else n_cash
+                q_val_pre = q_shares * n_price if q_pos == "IN" else q_cash
+                liquid = (n_val_pre * (1 - SLIPPAGE) - COMMISSION +
+                          q_val_pre * (1 - SLIPPAGE) - COMMISSION +
+                          ANNUAL_CONTRIB)
+
+                comp = h1.get(year, h1.get(year - 1, []))
+                if comp:
+                    n_basket = _build_basket(liquid * NDXA_PCT - COMMISSION, comp, stock_prices, date)
+                    n_pos = "IN"; n_cash = 0.0
+                else:
+                    n_cash = liquid * NDXA_PCT; n_pos = "OUT"; n_basket = {}
+
+                q_shares = (liquid * QQQB_PCT - COMMISSION) / (n_price * (1 + SLIPPAGE))
+                q_pos = "IN"; q_cash = 0.0
+                q_entry_price = n_price
+
+                n_val_post = _basket_value(n_basket, stock_prices, date) if n_pos == "IN" else n_cash
+                q_val_post = q_shares * n_price
+                post_total = n_val_post + q_val_post
+                ndx_pct = n_val_post / post_total * 100 if post_total > 0 else 0
+                rebal_log.append({
+                    "date":         date,
+                    "pre_total":    round(n_val_pre + q_val_pre),
+                    "contrib":      ANNUAL_CONTRIB,
+                    "post_ndx_val": round(n_val_post),
+                    "post_qqq_val": round(q_val_post),
+                    "post_ndx_pct": round(ndx_pct, 1),
+                    "ndx_holding":  "+".join(n_basket.keys()),
+                })
+                comb_mid_contribs += ANNUAL_CONTRIB
+                n_mid_contrib = 0.0; q_mid_contrib = 0.0
+
+        # NDX-A annual rotation at year start (skip if April rebal happened today)
+        if n_pos == "IN" and prev_year is not None and year != prev_year and date not in contrib_dates:
+            new_comp = h1.get(year, h1.get(year - 1, []))
+            cur = _basket_value(n_basket, stock_prices, date)
+            if cur > 0 and new_comp:
+                n_basket = _build_basket(cur * (1 - SLIPPAGE) - COMMISSION, new_comp, stock_prices, date)
+        prev_year = year
+
+        # Sell signal
+        bearish = bool(row["price_rose"]) and bool(row["breadth_fell"]) and breadth < DIVERGENCE_BREADTH_CAP
+        if bearish and trade_open:
+            if n_pos == "IN":
+                n_cash = _basket_value(n_basket, stock_prices, date) * (1 - SLIPPAGE) - COMMISSION
+                n_basket = {}; n_pos = "OUT"
+            if q_pos == "IN":
+                q_cash = q_shares * n_price * (1 - SLIPPAGE) - COMMISSION
+                q_shares = 0.0; q_pos = "OUT"
+            total = n_cash + q_cash
+            deployed = comb_entry_val + comb_mid_contribs
+            trades.append({
+                "entry_date": comb_entry_date, "exit_date": date,
+                "held_days":  (date - comb_entry_date).days,
+                "entry_value": comb_entry_val, "mid_contribs": comb_mid_contribs,
+                "exit_value": total, "net_gain": total - deployed,
+                "return_pct": (total - deployed) / deployed * 100 if deployed else 0,
+                "status": "closed",
+            })
+            trade_open = False
+
+        n_val = _basket_value(n_basket, stock_prices, date) if n_pos == "IN" else n_cash
+        q_val = q_shares * n_price if q_pos == "IN" else q_cash
+        total = n_val + q_val
+
+        # Buy signal
+        if not trade_open and not pd.isna(breadth) and breadth < BUY_B200_THRESH:
+            cap = n_cash + q_cash + pending_contrib; pending_contrib = 0.0
+            comp = h1.get(year, [])
+            if comp:
+                n_basket = _build_basket(cap * NDXA_PCT - COMMISSION, comp, stock_prices, date)
+                n_orig_val = _basket_value(n_basket, stock_prices, date)
+                n_mid_contrib = 0.0; n_pos = "IN"; n_cash = 0.0
+            else:
+                n_cash = cap * NDXA_PCT
+            q_shares = (cap * QQQB_PCT - COMMISSION) / (n_price * (1 + SLIPPAGE))
+            q_entry_price = n_price; q_mid_contrib = 0.0; q_pos = "IN"; q_cash = 0.0
+            n_val = _basket_value(n_basket, stock_prices, date) if n_pos == "IN" else n_cash
+            q_val = q_shares * n_price
+            total = n_val + q_val
+            comb_entry_date = date; comb_entry_val = total
+            comb_mid_contribs = 0.0; trade_open = True
+
+        values[date] = total
+
+    # Open trade
+    if trade_open:
+        last_date = common_idx[-1]
+        total = values.get(last_date, 0.0)
+        deployed = comb_entry_val + comb_mid_contribs
+        trades.append({
+            "entry_date": comb_entry_date, "exit_date": None,
+            "held_days":  (last_date - comb_entry_date).days,
+            "entry_value": comb_entry_val, "mid_contribs": comb_mid_contribs,
+            "exit_value": total, "net_gain": total - deployed,
+            "return_pct": (total - deployed) / deployed * 100 if deployed else 0,
+            "status": "(open)",
+        })
+
+    return pd.Series(values, name="Sig+Rebal"), trades, rebal_log
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Strategy 2: Buy & Hold (always invested, April contributions, annual rotation)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -459,11 +595,11 @@ def print_trade_log(label: str, trades: list[dict]) -> None:
     print("─" * (len(hdr) - 1))
 
 
-def print_rebal_log(log: list[dict]) -> None:
+def print_rebal_log(log: list[dict], label: str = "April Rebalance Log") -> None:
     hdr = (f"\n{'#':>3}  {'Date':10}  {'Pre-Total':>13}  {'Contrib':>9}  "
            f"{'Post NDX Val':>13}  {'Post QQQ Val':>13}  {'NDX%':>6}  Holding")
     bar = "─" * len(hdr.strip())
-    print(f"\n{bar}\n  April Rebalance Log\n{bar}{hdr}")
+    print(f"\n{bar}\n  {label}\n{bar}{hdr}")
     print("─" * (len(hdr) - 1))
     for i, r in enumerate(log, 1):
         print(
@@ -476,28 +612,35 @@ def print_rebal_log(log: list[dict]) -> None:
 
 
 def export_csvs(
-    metrics_rows: list[dict],
-    signal_trades: list[dict],
-    rebal_log: list[dict],
-    equity_signal: pd.Series,
-    equity_bh: pd.Series,
-    equity_ar: pd.Series,
+    metrics_rows:   list[dict],
+    signal_trades:  list[dict],
+    sigreb_trades:  list[dict],
+    ar_log:         list[dict],
+    sr_log:         list[dict],
+    equity_signal:  pd.Series,
+    equity_bh:      pd.Series,
+    equity_ar:      pd.Series,
+    equity_sr:      pd.Series,
 ) -> None:
     prefix = DATA_DIR / "combined_n25q75"
     pd.DataFrame(metrics_rows).to_csv(f"{prefix}_metrics.csv", index=False)
 
-    rows = []
-    for i, t in enumerate(signal_trades, 1):
-        row = {"trade_num": i}; row.update(t); rows.append(row)
-    pd.DataFrame(rows).to_csv(f"{prefix}_signal_trades.csv", index=False)
+    for fname, trades in [("signal_trades", signal_trades), ("sigreb_trades", sigreb_trades)]:
+        rows = []
+        for i, t in enumerate(trades, 1):
+            row = {"trade_num": i}; row.update(t); rows.append(row)
+        pd.DataFrame(rows).to_csv(f"{prefix}_{fname}.csv", index=False)
 
-    pd.DataFrame(rebal_log).to_csv(f"{prefix}_rebal_log.csv", index=False)
+    pd.DataFrame(ar_log).to_csv(f"{prefix}_rebal_log.csv", index=False)
+    pd.DataFrame(sr_log).to_csv(f"{prefix}_sigreb_log.csv", index=False)
 
-    eq = pd.DataFrame({"Signal": equity_signal, "Buy_Hold": equity_bh, "Apr_Rebal": equity_ar})
+    eq = pd.DataFrame({"Signal": equity_signal, "Buy_Hold": equity_bh,
+                        "Apr_Rebal": equity_ar, "Sig_Rebal": equity_sr})
     eq.to_csv(f"{prefix}_equity.csv")
 
     for name in [f"{prefix}_metrics.csv", f"{prefix}_signal_trades.csv",
-                 f"{prefix}_rebal_log.csv", f"{prefix}_equity.csv"]:
+                 f"{prefix}_sigreb_trades.csv", f"{prefix}_rebal_log.csv",
+                 f"{prefix}_sigreb_log.csv", f"{prefix}_equity.csv"]:
         print(f"Saved → {name}")
 
 
@@ -515,23 +658,30 @@ def main() -> None:
     print("Running Signal strategy…")
     equity_signal, signal_trades = run_signal(df, h1, stock_prices)
 
+    print("Running Signal + April Rebalance strategy…")
+    equity_sr, sigreb_trades, sr_log = run_signal_rebal(df, h1, stock_prices)
+
     print("Running Buy & Hold strategy…")
     equity_bh = run_buy_hold(df, h1, stock_prices)
 
     print("Running April Rebalance strategy…")
-    equity_ar, rebal_log = run_apr_rebal(df, h1, stock_prices)
+    equity_ar, ar_log = run_apr_rebal(df, h1, stock_prices)
 
-    m_signal = compute_metrics("Signal (25/75)",   equity_signal)
-    m_bh     = compute_metrics("Buy & Hold",        equity_bh)
-    m_ar     = compute_metrics("April Rebalance",   equity_ar)
+    m_signal = compute_metrics("Signal",          equity_signal)
+    m_sr     = compute_metrics("Signal+AprRebal", equity_sr)
+    m_bh     = compute_metrics("Buy & Hold",      equity_bh)
+    m_ar     = compute_metrics("Apr Rebalance",   equity_ar)
 
-    print_metrics_table([m_signal, m_bh, m_ar])
-    print_trade_log("Signal Strategy", signal_trades)
-    print_rebal_log(rebal_log)
+    print_metrics_table([m_signal, m_sr, m_bh, m_ar])
+    print_trade_log("Signal", signal_trades)
+    print_trade_log("Signal + April Rebalance", sigreb_trades)
+    print_rebal_log(ar_log,  "April Rebalance Log (Buy & Hold)")
+    print_rebal_log(sr_log,  "April Rebalance Log (Signal)")
 
     print()
-    export_csvs([m_signal, m_bh, m_ar], signal_trades, rebal_log,
-                equity_signal, equity_bh, equity_ar)
+    export_csvs([m_signal, m_sr, m_bh, m_ar],
+                signal_trades, sigreb_trades, ar_log, sr_log,
+                equity_signal, equity_bh, equity_ar, equity_sr)
 
 
 if __name__ == "__main__":
