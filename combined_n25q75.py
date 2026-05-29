@@ -48,7 +48,7 @@ ANNUAL_CONTRIB     = 26_880.0
 CONTRIB_MONTH      = 4
 CONTRIB_DAY        = 6
 CONTRIB_START_YEAR = 2012
-START_DATE         = pd.Timestamp("2011-01-01")
+START_DATE         = pd.Timestamp("2001-01-01")
 
 NDXA_PCT = 0.25
 QQQB_PCT = 0.75
@@ -95,12 +95,11 @@ def load_ndx(breadth: pd.DataFrame) -> pd.DataFrame:
     merged = ndx[["price"]].join(breadth, how="left")
     merged.sort_index(inplace=True)
     merged = merged[merged["breadth"].notna()]
-    merged = merged[merged.index >= START_DATE]
     pp = merged["price"].shift(DIVERGENCE_WINDOW)
     bp = merged["breadth"].shift(DIVERGENCE_WINDOW)
     merged["price_rose"]   = ((merged["price"] - pp) / pp * 100 >= DIVERGENCE_PRICE_RISE).fillna(False)
     merged["breadth_fell"] = ((bp - merged["breadth"]) >= DIVERGENCE_BREADTH_FALL).fillna(False)
-    return merged
+    return merged[merged.index >= START_DATE]
 
 
 def load_holdings(top_n: int = 1) -> dict[int, list[tuple[str, float]]]:
