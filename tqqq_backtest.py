@@ -2,11 +2,15 @@
 TQQQ Breadth Strategy — same signals as QQQ backtest, applied to 3× leveraged TQQQ.
 
 BUY  (while OUT): breadth200 < 26%
+                  AND at least 1 of 2 vote:
+                    • VIX > 30  (fear spike / panic bottom)
+                    • price > MA200  (uptrend pullback — safe to buy immediately)
 SELL (while IN):  Bearish divergence — price rose ≥ 3% over 60 days
                   while breadth200 fell ≥ 20 pts AND breadth200 < 60%
 
 Price data fetched from yfinance (TQQQ, since 2010-02-11).
 Breadth data from S5TH.csv (S&P 500 % above 200-day MA).
+VIX data from VIX.csv.
 
 Comparison chart saved as tqqq_vs_qqq_performance.png.
 """
@@ -23,9 +27,14 @@ from pathlib import Path
 DATA_DIR     = Path(__file__).parent
 BREADTH_FILE = DATA_DIR / "S5TH.csv"
 NDX_FILE     = DATA_DIR / "NASDAQ100.csv"   # used for QQQ comparison
+VIX_FILE     = DATA_DIR / "VIX.csv"
 
-# ── Strategy parameters (identical to qqq_backtest.py) ───────────────────────
-BUY_B200_THRESH         = 26.0
+# ── Buy thresholds ────────────────────────────────────────────────────────────
+BUY_B200_THRESH = 26.0   # breadth200 must be below this
+VIX_BUY_THRESH  = 30.0   # VIX vote: fear spike (VIX > 30)
+MA200_WINDOW    = 200     # MA200 vote: price above 200-day moving average
+
+# ── Sell — bearish divergence ─────────────────────────────────────────────────
 DIVERGENCE_WINDOW       = 60
 DIVERGENCE_PRICE_RISE   = 3.0
 DIVERGENCE_BREADTH_FALL = 20.0
@@ -38,6 +47,14 @@ SLIPPAGE        = 0.0005
 
 def _parse_price(s: pd.Series) -> pd.Series:
     return s.astype(str).str.replace(",", "").astype(float)
+
+
+def _load_vix() -> pd.Series:
+    vix = pd.read_csv(VIX_FILE)
+    vix.columns = [c.strip().strip('"').lstrip("﻿") for c in vix.columns]
+    vix["Date"] = pd.to_datetime(vix["Date"], format="%m/%d/%Y")
+    vix.set_index("Date", inplace=True)
+    return _parse_price(vix["Price"]).rename("vix")
 
 
 def load_tqqq_data() -> pd.DataFrame:
@@ -55,11 +72,28 @@ def load_tqqq_data() -> pd.DataFrame:
     b200.set_index("Date", inplace=True)
     b200["Price"] = _parse_price(b200["Price"])
 
+    ndx = pd.read_csv(NDX_FILE)
+    ndx["Date"] = pd.to_datetime(ndx["Date"], format="%m/%d/%Y")
+    ndx.set_index("Date", inplace=True)
+    ndx_price = _parse_price(ndx["Price"]).rename("ndx_price")
+
     merged = tqqq.to_frame().join(
         b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"
     )
+    merged = merged.join(_load_vix(), how="left")
+    merged = merged.join(ndx_price, how="left")
     merged.sort_index(inplace=True)
     merged = merged[merged["breadth"].notna()]
+
+    merged["vix"]        = merged["vix"].ffill()
+    merged["ndx_price"]  = merged["ndx_price"].ffill()
+    merged["ma200"]      = merged["ndx_price"].rolling(MA200_WINDOW).mean()
+
+    merged["vix_vote"]   = merged["vix"].apply(
+        lambda v: True if pd.isna(v) else v > VIX_BUY_THRESH)
+    merged["ma200_vote"] = merged.apply(
+        lambda r: True if pd.isna(r["ma200"]) else r["ndx_price"] > r["ma200"], axis=1)
+    merged["vote_gate"]  = merged["vix_vote"] | merged["ma200_vote"]
 
     pp = merged["price"].shift(DIVERGENCE_WINDOW)
     bp = merged["breadth"].shift(DIVERGENCE_WINDOW)
@@ -70,7 +104,7 @@ def load_tqqq_data() -> pd.DataFrame:
 
 
 def load_qqq_data() -> pd.DataFrame:
-    """Load NDX data (proxy for QQQ) + breadth, same pipeline as qqq_backtest.py."""
+    """Load NDX data (proxy for QQQ) + breadth + VIX, same pipeline as qqq_backtest.py."""
     ndx = pd.read_csv(NDX_FILE)
     ndx["Date"] = pd.to_datetime(ndx["Date"], format="%m/%d/%Y")
     ndx.set_index("Date", inplace=True)
@@ -85,8 +119,18 @@ def load_qqq_data() -> pd.DataFrame:
     merged = ndx[["price"]].join(
         b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"
     )
+    merged = merged.join(_load_vix(), how="left")
     merged.sort_index(inplace=True)
     merged = merged[merged["breadth"].notna()]
+
+    merged["vix"]   = merged["vix"].ffill()
+    merged["ma200"] = merged["price"].rolling(MA200_WINDOW).mean()
+
+    merged["vix_vote"]   = merged["vix"].apply(
+        lambda v: True if pd.isna(v) else v > VIX_BUY_THRESH)
+    merged["ma200_vote"] = merged.apply(
+        lambda r: True if pd.isna(r["ma200"]) else r["price"] > r["ma200"], axis=1)
+    merged["vote_gate"]  = merged["vix_vote"] | merged["ma200_vote"]
 
     pp = merged["price"].shift(DIVERGENCE_WINDOW)
     bp = merged["breadth"].shift(DIVERGENCE_WINDOW)
@@ -121,6 +165,8 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
     trades: list[dict] = []
     values: dict = {}
 
+    buy_trigger = ""
+
     for date, row in df.iterrows():
         price        = row["price"]
         breadth      = row["breadth"]
@@ -128,7 +174,9 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
         breadth_fell = bool(row["breadth_fell"])
 
         if position == "OUT":
-            if not pd.isna(breadth) and breadth < BUY_B200_THRESH:
+            vote_gate = bool(row["vote_gate"])
+            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate
+            if do_buy:
                 portfolio -= COMMISSION
                 eff_entry       = price * (1 + SLIPPAGE)
                 raw_entry       = price
@@ -138,6 +186,9 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                 trade_port_low     = 0.0   # no drawdown yet
                 trade_port_trough_val = portfolio
                 position           = "IN"
+                buy_trigger = (("VIX" if row["vix_vote"] else "") +
+                               ("+" if row["vix_vote"] and row["ma200_vote"] else "") +
+                               ("MA200" if row["ma200_vote"] else ""))
 
         elif position == "IN":
             trade_low = min(trade_low, price)
@@ -168,6 +219,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                     "port_peak":        trade_port_peak,
                     "port_trough":      trade_port_trough_val,
                     "accumulated":      portfolio,
+                    "buy_trigger":      buy_trigger,
                     "sell_reason":      "bearish-divergence",
                 })
                 position = "OUT"
@@ -200,6 +252,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
             "port_peak":     trade_port_peak,
             "port_trough":   trade_port_trough_val,
             "accumulated":   cur_port_val,
+            "buy_trigger":   buy_trigger,
         }
 
     return pd.Series(values, name="strategy"), trades, open_trade
@@ -239,14 +292,15 @@ def compute_metrics(values: pd.Series, trades: list[dict] | None = None) -> dict
     return m
 
 
-def print_metrics_triple(tqqq_strat: dict, qqq_strat: dict, bench: dict) -> None:
-    keys = list(dict.fromkeys(list(tqqq_strat) + list(qqq_strat) + list(bench)))
+def print_metrics_quad(tqqq_strat: dict, qqq_strat: dict, tqqq_bench: dict, qqq_bench: dict) -> None:
+    keys = list(dict.fromkeys(list(tqqq_strat) + list(qqq_strat) + list(tqqq_bench) + list(qqq_bench)))
     col  = 16
-    hdr  = f"{'Metric':<22}{'TQQQ Strat':>{col}}{'QQQ Strat':>{col}}{'QQQ B&H':>{col}}"
+    hdr  = f"{'Metric':<22}{'TQQQ Strat':>{col}}{'QQQ Strat':>{col}}{'TQQQ B&H':>{col}}{'QQQ B&H':>{col}}"
     sep  = "=" * len(hdr)
     print(f"\n{sep}\n{hdr}\n{sep}")
     for k in keys:
-        print(f"  {k:<20}{tqqq_strat.get(k,'—'):>{col}}{qqq_strat.get(k,'—'):>{col}}{bench.get(k,'—'):>{col}}")
+        print(f"  {k:<20}{tqqq_strat.get(k,'—'):>{col}}{qqq_strat.get(k,'—'):>{col}}"
+              f"{tqqq_bench.get(k,'—'):>{col}}{qqq_bench.get(k,'—'):>{col}}")
     print(sep)
 
 
@@ -256,7 +310,7 @@ def print_trades(label: str, trades: list[dict], open_trade: dict | None = None)
         print("  No completed trades.")
         return
     hdr = (f"\n{'#':>3}  {'Entry':10}  {'Exit':10}  {'Held':>7}  {'Entry $':>9}  {'Exit $':>9}"
-           f"  {'Return':>8}  {'PricDD':>7}  {'PortPeak':>13}  {'PortTrough':>13}  {'PortDD':>7}  {'Portfolio':>13}  Reason")
+           f"  {'Return':>8}  {'PricDD':>7}  {'PortPeak':>13}  {'PortTrough':>13}  {'PortDD':>7}  {'Portfolio':>13}  {'Buy trigger':>11}  Reason")
     print(hdr)
     print("-" * len(hdr))
     for i, t in enumerate(trades, 1):
@@ -270,7 +324,7 @@ def print_trades(label: str, trades: list[dict], open_trade: dict | None = None)
             f"${t['port_peak']:>12,.0f}  "
             f"${t['port_trough']:>12,.0f}  "
             f"{t['port_dd_pct']:>+6.1f}%  "
-            f"${t['accumulated']:>12,.0f}  {t.get('sell_reason','—')}"
+            f"${t['accumulated']:>12,.0f}  {t.get('buy_trigger','—'):>11}  {t.get('sell_reason','—')}"
         )
     if open_trade:
         days = (open_trade["current_date"] - open_trade["entry_date"]).days
@@ -283,7 +337,7 @@ def print_trades(label: str, trades: list[dict], open_trade: dict | None = None)
             f"${open_trade['port_peak']:>12,.0f}  "
             f"${open_trade['port_trough']:>12,.0f}  "
             f"{open_trade['port_dd_pct']:>+6.1f}%  "
-            f"${open_trade['accumulated']:>12,.0f}  "
+            f"${open_trade['accumulated']:>12,.0f}  {open_trade.get('buy_trigger','—'):>11}  "
             f"still holding (as of {open_trade['current_date'].strftime('%Y-%m-%d')})"
         )
 
@@ -313,8 +367,8 @@ def plot_comparison(
     ax1, ax2, ax3 = axes
 
     fig.suptitle(
-        "TQQQ vs QQQ — Same Breadth Strategy\n"
-        f"BUY: breadth200 < {BUY_B200_THRESH}%  |  "
+        "TQQQ vs QQQ — Same Breadth Strategy  (+Voting Gate)\n"
+        f"BUY: breadth200 < {BUY_B200_THRESH}%  AND  (VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW})  [≥1 of 2]\n"
         f"SELL: price ≥+{DIVERGENCE_PRICE_RISE}% over {DIVERGENCE_WINDOW}d  AND  "
         f"breadth fell ≥{DIVERGENCE_BREADTH_FALL}pts  AND  breadth < {DIVERGENCE_BREADTH_CAP}%\n"
         f"Both rebased to ${INITIAL_CAPITAL:,.0f} at {start.strftime('%Y-%m-%d')}",
@@ -391,12 +445,16 @@ def main() -> None:
     qqq_bench                        = run_benchmark(qqq_df)
     qqq_strat, qqq_trades, qqq_open  = run_strategy(qqq_df)
 
-    print(f"\nStrategy: breadth200 < {BUY_B200_THRESH}% to buy, bearish-divergence to sell")
-    print(f"Costs   : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side\n")
+    print(f"\nBuy signal  : breadth200 < {BUY_B200_THRESH}%")
+    print(f"Vote gate   : VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW}  (≥1 of 2 must agree)")
+    print(f"Sell signal : price rose ≥{DIVERGENCE_PRICE_RISE}% AND breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts")
+    print(f"              over {DIVERGENCE_WINDOW} days, while breadth200 < {DIVERGENCE_BREADTH_CAP}%")
+    print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side\n")
 
-    print_metrics_triple(
+    print_metrics_quad(
         compute_metrics(tqqq_strat, tqqq_trades),
         compute_metrics(qqq_strat,  qqq_trades),
+        compute_metrics(tqqq_bench),
         compute_metrics(qqq_bench),
     )
 

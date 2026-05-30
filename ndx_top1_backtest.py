@@ -233,7 +233,8 @@ def load_stock_prices(tickers: set[str]) -> dict[str, pd.Series]:
         if not path.exists():
             print(f"  [WARNING] No price file for {ticker}, skipping.")
             continue
-        df = pd.read_csv(path, index_col=0, parse_dates=True)
+        df = pd.read_csv(path, index_col=0)
+        df.index = pd.to_datetime(df.index, format='ISO8601', utc=True).tz_localize(None)
         col = "Close" if "Close" in df.columns else df.columns[0]
         prices[ticker] = df[col].dropna()
     return prices

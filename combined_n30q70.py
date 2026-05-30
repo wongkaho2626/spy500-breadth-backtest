@@ -1,12 +1,12 @@
 """
-Combined Portfolio: NDX Top-1 30% / QQQ 70%
+Combined Portfolio: NDX Top-1 30% / QQQ 70%  —  Signal + Proportional Contribution (no rebalance)
 
 Initial capital : $153,402
 Annual funding  : $26,880 on April 6 each year (starting 2012)
-  - If in a trade : deploy N30/Q70 into current positions immediately
+  - If in a trade : add contribution proportionally (30/70) into current positions
   - If out        : hold as pending cash, deploy on next buy signal
-Rebalancing     : N30/Q70 at every trade entry
-Signals (qqq_backtest rules):
+Rebalancing     : None — NDX top holding is NOT switched annually; positions held until exit
+Signals:
   BUY : S&P 500 breadth200 < 26%
   SELL: NDX price rose >= 3% over 60d AND breadth fell >= 20pts AND breadth < 60%
 
@@ -22,6 +22,7 @@ Exports (in same directory):
 import warnings
 warnings.filterwarnings("ignore")
 
+import argparse
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -131,7 +132,8 @@ def load_stock_prices(tickers: set[str]) -> dict[str, pd.Series]:
         if not path.exists():
             print(f"  [WARNING] No price file for {ticker}, skipping.")
             continue
-        df  = pd.read_csv(path, index_col=0, parse_dates=True)
+        df  = pd.read_csv(path, index_col=0)
+        df.index = pd.to_datetime(df.index, format="mixed", utc=True).tz_localize(None)
         col = "Close" if "Close" in df.columns else df.columns[0]
         prices[ticker] = df[col].dropna()
     return prices
@@ -198,7 +200,8 @@ def run_portfolio(
     stock_prices: dict[str, pd.Series],
 ) -> tuple[pd.Series, list[dict], list[dict], list[dict]]:
     """
-    Simulate the 2-leg rebalanced portfolio with annual contributions.
+    Simulate the 2-leg portfolio with annual contributions but NO annual NDX rebalance.
+    The NDX top holding at entry is held for the full duration of each trade.
     Uses unified NDX-based sell signal so both legs exit simultaneously.
     Returns (equity_series, comb_trades, ndxa_trades, qqqb_trades).
     """
@@ -218,7 +221,7 @@ def run_portfolio(
     n_worst_dd      = 0.0
     n_trough        = n_cash
     n_entry_tickers: list[str] = []
-    prev_year: int | None = None
+    n_entry_comp: list[tuple[str, float]] = []
 
     # ── QQQ-B leg state (NDX proxy, shares-based) ────────────────────────────
     q_pos         = "OUT"
@@ -275,9 +278,9 @@ def run_portfolio(
                 q_add = ANNUAL_CONTRIB * QQQB_PCT
 
                 if n_pos == "IN":
-                    cur_comp = h1.get(year, h1.get(year - 1, []))
-                    if cur_comp:
-                        extra = _build_basket(n_add - COMMISSION, cur_comp, stock_prices, date)
+                    # Add to same composition as entry — no rebalance
+                    if n_entry_comp:
+                        extra = _build_basket(n_add - COMMISSION, n_entry_comp, stock_prices, date)
                         for ticker, shares in extra.items():
                             n_basket[ticker] = n_basket.get(ticker, 0.0) + shares
                     n_mid_contrib += n_add
@@ -294,16 +297,7 @@ def run_portfolio(
                 comb_mid_contribs += ANNUAL_CONTRIB
                 print(f"  [contrib] {date.date()}: +${ANNUAL_CONTRIB:,.0f} deployed into open positions")
 
-        # ── 1. NDX-A annual rebalance (year-start during IN) ─────────────────
-        if n_pos == "IN" and prev_year is not None and year != prev_year:
-            new_comp = h1.get(year, h1.get(year - 1, []))
-            cur = _basket_value(n_basket, stock_prices, date)
-            if cur > 0 and new_comp:
-                after_sell = cur * (1 - SLIPPAGE) - COMMISSION
-                n_basket   = _build_basket(after_sell, new_comp, stock_prices, date)
-        prev_year = year
-
-        # ── 2. Sell check ─────────────────────────────────────────────────────
+        # ── 1. Sell check ─────────────────────────────────────────────────────
         bearish_div = sig_pr and sig_bf and breadth < DIVERGENCE_BREADTH_CAP
         if bearish_div and trade_open:
             if n_pos == "IN":
@@ -311,9 +305,7 @@ def run_portfolio(
                 exit_n     = cur_n * (1 - SLIPPAGE) - COMMISSION
                 deployed_n = n_orig_val + n_mid_contrib
                 ret_n      = (exit_n - deployed_n) / deployed_n * 100 if deployed_n > 0 else 0.0
-                h_str = "+".join(n_entry_tickers)
-                if list(n_basket.keys()) != n_entry_tickers:
-                    h_str += " → " + "+".join(n_basket.keys())
+                h_str      = "+".join(n_entry_tickers)
                 ndxa_trades.append({
                     "entry_date":   n_entry_date,
                     "exit_date":    date,
@@ -330,9 +322,10 @@ def run_portfolio(
                     "holdings":     h_str,
                     "status":       "closed",
                 })
-                n_cash   = exit_n
-                n_basket = {}
-                n_pos    = "OUT"
+                n_cash        = exit_n
+                n_basket      = {}
+                n_entry_comp  = []
+                n_pos         = "OUT"
 
             if q_pos == "IN":
                 exit_q     = q_shares * n_price * (1 - SLIPPAGE) - COMMISSION
@@ -378,12 +371,12 @@ def run_portfolio(
             })
             trade_open = False
 
-        # ── 3. Mark to market ─────────────────────────────────────────────────
+        # ── 2. Mark to market ─────────────────────────────────────────────────
         n_val = n_mktval(date)
         q_val = q_mktval(n_price)
         total = n_val + q_val
 
-        # ── 4. Update peaks / troughs ─────────────────────────────────────────
+        # ── 3. Update peaks / troughs ─────────────────────────────────────────
         if trade_open:
             comb_peak = max(comb_peak, total)
             dd = (total - comb_peak) / comb_peak * 100
@@ -406,7 +399,7 @@ def run_portfolio(
             if dd < q_worst_dd:
                 q_worst_dd = dd;  q_trough = q_val
 
-        # ── 5. Buy check ──────────────────────────────────────────────────────
+        # ── 4. Buy check ──────────────────────────────────────────────────────
         if not trade_open and not pd.isna(breadth) and breadth < BUY_B200_THRESH:
             total_capital   = n_cash + q_cash + pending_contrib
             pending_contrib = 0.0
@@ -414,18 +407,19 @@ def run_portfolio(
             n_alloc = total_capital * NDXA_PCT
             q_alloc = total_capital * QQQB_PCT
 
-            # Enter NDX-A
+            # Enter NDX-A — lock in composition at entry, hold for full trade
             comp = h1.get(year, [])
             if comp:
-                n_buy         = n_alloc - COMMISSION
-                n_basket      = _build_basket(n_buy, comp, stock_prices, date)
-                n_orig_val    = _basket_value(n_basket, stock_prices, date)
-                n_entry_val   = n_orig_val
-                n_mid_contrib = 0.0
-                n_price_low   = n_orig_val
-                n_port_peak   = n_orig_val;  n_worst_dd = 0.0;  n_trough = n_orig_val
+                n_buy           = n_alloc - COMMISSION
+                n_basket        = _build_basket(n_buy, comp, stock_prices, date)
+                n_entry_comp    = comp
+                n_orig_val      = _basket_value(n_basket, stock_prices, date)
+                n_entry_val     = n_orig_val
+                n_mid_contrib   = 0.0
+                n_price_low     = n_orig_val
+                n_port_peak     = n_orig_val;  n_worst_dd = 0.0;  n_trough = n_orig_val
                 n_entry_tickers = list(n_basket.keys())
-                n_entry_date  = date;  n_pos = "IN";  n_cash = 0.0
+                n_entry_date    = date;  n_pos = "IN";  n_cash = 0.0
             else:
                 n_cash = n_alloc  # no holdings; keep as cash
 
@@ -461,9 +455,7 @@ def run_portfolio(
             cur_n      = _basket_value(n_basket, stock_prices, last_date)
             exit_n_est = cur_n * (1 - SLIPPAGE)
             deployed_n = n_orig_val + n_mid_contrib
-            h_str = "+".join(n_entry_tickers)
-            if list(n_basket.keys()) != n_entry_tickers:
-                h_str += " → " + "+".join(n_basket.keys())
+            h_str      = "+".join(n_entry_tickers)
             ndxa_trades.append({
                 "entry_date":   n_entry_date,
                 "exit_date":    None,
@@ -691,15 +683,23 @@ def export_csvs(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Combined NDX-Top1 30% / QQQ 70% backtest (no rebalance)")
+    parser.add_argument("--start-year", type=int, default=START_DATE.year,
+                        help="First year to include in the backtest (default: %(default)s)")
+    args = parser.parse_args()
+
+    start_date = pd.Timestamp(args.start_year, 1, 1)
+
     breadth = _load_breadth()
     df_ndx  = load_ndx(breadth)
-    df_ndx  = df_ndx[df_ndx.index >= START_DATE]
+    df_ndx  = df_ndx[df_ndx.index >= start_date]
 
     print(f"Backtest period : {df_ndx.index[0].date()} → {df_ndx.index[-1].date()}")
     print(f"Initial capital : ${INITIAL_CAPITAL:,.0f}")
     print(f"Annual funding  : ${ANNUAL_CONTRIB:,.0f} on April {CONTRIB_DAY} each year "
           f"(starting {CONTRIB_START_YEAR})")
     print(f"Allocation      : NDX-Top1 {NDXA_PCT:.0%} / QQQ {QQQB_PCT:.0%}")
+    print(f"Rebalancing     : None (NDX holding locked at entry, held for full trade duration)")
     print()
 
     h1      = load_holdings(top_n=1)
