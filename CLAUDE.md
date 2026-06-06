@@ -5,6 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Running the Scripts
 
 ```bash
+# Run the Seeking Alpha annual picks backtest (uses seeking_alpha.csv + market indicator CSVs)
+python seeking_alpha_backtest.py
+
 # Run the original S&P 500 breadth strategy (uses S&P 500 Historical Data.csv)
 python backtest.py
 
@@ -53,6 +56,26 @@ Standalone Python backtesting project — no package structure, no tests, no dep
 | `DIVERGENCE_BREADTH_CAP` | 55.0 | 55.0 | 60.0 |
 | `TRAILING_STOP_PCT` | — | — | 30.0% |
 
+## Seeking Alpha Backtest (`seeking_alpha_backtest.py`)
+
+Compares three annual stock-picking strategies using 10 Seeking Alpha picks/year:
+
+| Strategy | Entry | Exit |
+|---|---|---|
+| A (baseline) | Jan 1 every year | Dec 31 every year |
+| B (PE filter) | First day S&P 500 fwd PE < 20 | Dec 31 |
+| C (enhanced) | PE<20 OR (VIX≥22 AND breadth≤50); fallback Jan 1 | SPX bearish-div OR trailing-stop(-25%) OR year-end |
+
+**Key parameters:**
+- `FWD_PE_BUY = 20.0` — primary S&P 500 forward PE entry threshold
+- `VIX_ALT_THRESH = 22.0`, `BREADTH_ALT_THRESH = 50.0` — alt-entry (fear + oversold)
+- `DIV_WINDOW = 60`, `DIV_PRICE_RISE = 5.0%`, `DIV_BREADTH_FALL = 20 pts`, `DIV_BREADTH_CAP = 60.0` — bearish divergence exit parameters
+- `TRAILING_STOP_PCT = 25.0` — trailing stop for Strategy C
+
+**Data files used:** `seeking_alpha.csv`, `SPX.csv`, `S&P500ForwardPE.csv`, `S5TH.csv`, `VIX.csv`
+
+Entry prices for non-CSV dates are estimated via SPX beta=1 proxy. Year-end exits use actual CSV stock prices.
+
 ## CSV Data Files
 
 All CSVs use `MM/DD/YYYY` date format and comma-formatted prices (e.g. `"1,234.56"`). The `_parse_price()` helper strips commas before casting to float.
@@ -61,3 +84,5 @@ All CSVs use `MM/DD/YYYY` date format and comma-formatted prices (e.g. `"1,234.5
 - `SPY ETF Stock Price History.csv` — used by `spy_backtest.py` and `spy_optimize.py`
 - `QQQ ETF Stock Price History.csv` — used by `qqq_backtest.py` and `qqq_optimize.py`
 - `S&P 500 Stocks Above 200-Day Average Historical Data.csv` — breadth indicator (% of S&P 500 stocks above 200-day MA), used by all scripts
+- `seeking_alpha.csv` — annual Seeking Alpha 10-pick cohorts (2022–2026), used by `seeking_alpha_backtest.py`
+- `SPX.csv`, `S&P500ForwardPE.csv`, `S5TH.csv`, `VIX.csv` — market data for `seeking_alpha_backtest.py`
