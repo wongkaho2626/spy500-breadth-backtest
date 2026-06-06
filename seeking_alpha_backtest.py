@@ -497,6 +497,65 @@ def print_trades(results: dict) -> None:
         )
 
 
+def print_stock_trades_c(results: dict, sa_data: dict, market: pd.DataFrame) -> None:
+    """Print per-stock entry/exit details for Strategy C."""
+    c_trades = {t.get("year"): t for t in results["C"]["trades"]}
+    if results["C"]["open_trade"]:
+        t = results["C"]["open_trade"]
+        c_trades[t.get("year")] = t
+
+    print("\n── Strategy C — per-stock trade log ──")
+
+    for year in sorted(sa_data.keys()):
+        info        = sa_data[year]
+        stocks      = info["stocks"]
+        right_start = info["right_start"]
+        left_start  = info["left_start"]
+        year_start_td = _nearest_date(market, left_start)
+
+        trade = c_trades.get(year)
+        if not trade or not trade.get("entry_date"):
+            continue
+
+        entry_td = trade["entry_date"]
+        exit_td  = trade["exit_date"]
+        is_early = trade.get("exit_note", "year-end") not in ("year-end", "—")
+
+        spx_year_start = _spx(market, year_start_td)
+        spx_entry      = _spx(market, entry_td)
+        spx_exit       = _spx(market, exit_td)
+        use_right      = abs((entry_td - right_start).days) <= 2
+
+        held = _days_str((exit_td - entry_td).days)
+        print(f"\n  {year}  entry {entry_td.strftime('%Y-%m-%d')} ({trade['entry_note']})  "
+              f"→  exit {exit_td.strftime('%Y-%m-%d')} ({trade['exit_note']})  held {held}")
+        print(f"  {'Ticker':8}  {'Entry $':>10}  {'Exit $':>10}  {'Return':>8}")
+        print("  " + "-" * 44)
+
+        stock_rets = []
+        for s in stocks:
+            if use_right:
+                ep = s["right_entry"]
+                xp = s["right_exit"]
+            elif is_early:
+                ep = s["left_entry"] * (spx_entry / spx_year_start) if s["left_entry"] else None
+                xp = s["left_entry"] * (spx_exit  / spx_year_start) if s["left_entry"] else None
+            else:
+                ep = s["left_entry"] * (spx_entry / spx_year_start) if s["left_entry"] else None
+                xp = s["left_exit"]
+
+            if ep and xp:
+                ret = xp / ep - 1
+                stock_rets.append(ret)
+                print(f"  {s['ticker']:8}  ${ep:>9.2f}  ${xp:>9.2f}  {ret:>+7.1%}")
+            else:
+                print(f"  {s['ticker']:8}  {'—':>10}  {'—':>10}  {'—':>8}")
+
+        if stock_rets:
+            avg = sum(stock_rets) / len(stock_rets)
+            print(f"  {'AVERAGE':8}  {'':>10}  {'':>10}  {avg:>+7.1%}")
+
+
 def print_per_year_summary(results: dict, sa_data: dict) -> None:
     print("\n── Per-year returns ──\n")
     hdr = f"  {'Year':>4}  {'SA picks':45}  {'  A':>8}  {'  B':>8}  {'  C':>8}"
@@ -647,6 +706,7 @@ def main() -> None:
     print_per_year_summary(results, sa_data)
     print("\n── Trade log ──")
     print_trades(results)
+    print_stock_trades_c(results, sa_data, market)
     plot_results(results, bench, sa_data)
 
 
