@@ -8,6 +8,7 @@ BUY  (while OUT): breadth200 < 26%
 SELL (while IN):  Bearish divergence — price rose ≥ 3% over 60 days
                   while breadth200 fell ≥ 20 pts AND breadth200 < 60%
 """
+import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -40,6 +41,8 @@ DIVERGENCE_BREADTH_CAP  = 60.0  # breadth200 must be below this
 INITIAL_CAPITAL = 10_000.0
 COMMISSION      = 1.0
 SLIPPAGE        = 0.0005
+START_YEAR      = None   # e.g. 2010 to begin backtest on Jan 1 of that year; None = full history
+COOLDOWN_DAYS   = 15     # calendar days to wait after a sell before the next buy is allowed
 
 
 def _parse_price(s: pd.Series) -> pd.Series:
@@ -105,12 +108,13 @@ def _days_str(days: int) -> str:
     return f"{days}d"
 
 
-def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
-    position   = "OUT"
-    eff_entry  = raw_entry = 0.0
-    entry_date = None
-    trade_low  = 0.0
-    portfolio  = INITIAL_CAPITAL
+def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, list[dict], dict | None]:
+    position       = "OUT"
+    eff_entry      = raw_entry = 0.0
+    entry_date     = None
+    trade_low      = 0.0
+    portfolio      = INITIAL_CAPITAL
+    cooldown_until: pd.Timestamp | None = None
     trades: list[dict] = []
     values: dict = {}
 
@@ -121,8 +125,9 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
         breadth_fell = bool(row["breadth_fell"])
 
         if position == "OUT":
-            vote_gate = bool(row["vote_gate"])
-            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate
+            vote_gate      = bool(row["vote_gate"])
+            cooldown_ok    = cooldown_until is None or date > cooldown_until
+            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate and cooldown_ok
             if do_buy:
                 portfolio -= COMMISSION
                 eff_entry  = price * (1 + SLIPPAGE)
@@ -142,6 +147,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                 gross_ret = (eff_exit - eff_entry) / eff_entry
                 portfolio *= (1 + gross_ret)
                 portfolio -= COMMISSION
+                cooldown_until = date + pd.Timedelta(days=cooldown_days)
                 trades.append({
                     "entry_date":       entry_date,
                     "exit_date":        date,
@@ -152,6 +158,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                     "accumulated":      portfolio,
                     "buy_trigger":      buy_trigger,
                     "sell_reason":      "bearish-divergence",
+                    "cooldown_until":   cooldown_until,
                 })
                 position = "OUT"
 
@@ -392,17 +399,27 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="NASDAQ 100 Breadth Strategy backtest")
+    parser.add_argument("--start-year", type=int, default=START_YEAR,
+                        metavar="YEAR", help="First year to include in the backtest (default: full history)")
+    parser.add_argument("--cooldown-days", type=int, default=COOLDOWN_DAYS,
+                        metavar="DAYS", help="Calendar-day cooldown after a sell before next buy (default: %(default)s)")
+    args = parser.parse_args()
+
     print("Loading data...")
     df = load_data()
+    if args.start_year is not None:
+        df = df[df.index.year >= args.start_year]
     print(f"Date range  : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
     print(f"Buy signal  : breadth200 < {BUY_B200_THRESH}%")
     print(f"Vote gate   : VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW}  (≥1 of 2 must agree)")
     print(f"Sell signal : price rose ≥{DIVERGENCE_PRICE_RISE}% AND breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts")
     print(f"              over {DIVERGENCE_WINDOW} days, while breadth200 < {DIVERGENCE_BREADTH_CAP}%")
     print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")
+    print(f"Cooldown    : {args.cooldown_days} calendar days after each sell")
 
     benchmark                    = run_benchmark(df)
-    strategy, trades, open_trade = run_strategy(df)
+    strategy, trades, open_trade = run_strategy(df, cooldown_days=args.cooldown_days)
 
     print_metrics(
         compute_metrics(strategy, trades),

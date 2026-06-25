@@ -14,6 +14,7 @@ VIX data from VIX.csv.
 
 Comparison chart saved as tqqq_vs_qqq_performance.png.
 """
+import argparse
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -43,6 +44,8 @@ DIVERGENCE_BREADTH_CAP  = 60.0
 INITIAL_CAPITAL = 10_000.0
 COMMISSION      = 1.0
 SLIPPAGE        = 0.0005
+START_YEAR      = None   # e.g. 2015 to begin backtest on Jan 1 of that year; None = full history
+COOLDOWN_DAYS   = 15     # calendar days to wait after a sell before the next buy is allowed
 
 
 def _parse_price(s: pd.Series) -> pd.Series:
@@ -152,7 +155,7 @@ def _days_str(days: int) -> str:
     return f"{days}d"
 
 
-def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
+def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, list[dict], dict | None]:
     position           = "OUT"
     eff_entry          = raw_entry = 0.0
     entry_date         = None
@@ -160,8 +163,9 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
     portfolio          = INITIAL_CAPITAL
     port_peak          = INITIAL_CAPITAL
     trade_port_peak    = INITIAL_CAPITAL
-    trade_port_low     = 0.0            # worst peak-to-subsequent-trough % (≤ 0)
+    trade_port_low     = 0.0
     trade_port_trough_val = INITIAL_CAPITAL
+    cooldown_until: pd.Timestamp | None = None
     trades: list[dict] = []
     values: dict = {}
 
@@ -174,8 +178,9 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
         breadth_fell = bool(row["breadth_fell"])
 
         if position == "OUT":
-            vote_gate = bool(row["vote_gate"])
-            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate
+            vote_gate   = bool(row["vote_gate"])
+            cooldown_ok = cooldown_until is None or date > cooldown_until
+            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate and cooldown_ok
             if do_buy:
                 portfolio -= COMMISSION
                 eff_entry       = price * (1 + SLIPPAGE)
@@ -206,8 +211,9 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                 gross_ret = (eff_exit - eff_entry) / eff_entry
                 portfolio *= (1 + gross_ret)
                 portfolio -= COMMISSION
-                port_peak = max(port_peak, portfolio)
-                port_dd = trade_port_low  # worst peak-to-subsequent-trough %
+                port_peak      = max(port_peak, portfolio)
+                port_dd        = trade_port_low
+                cooldown_until = date + pd.Timedelta(days=cooldown_days)
                 trades.append({
                     "entry_date":       entry_date,
                     "exit_date":        date,
@@ -221,6 +227,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                     "accumulated":      portfolio,
                     "buy_trigger":      buy_trigger,
                     "sell_reason":      "bearish-divergence",
+                    "cooldown_until":   cooldown_until,
                 })
                 position = "OUT"
 
@@ -431,11 +438,20 @@ def plot_comparison(
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="TQQQ vs QQQ Breadth Strategy backtest")
+    parser.add_argument("--start-year", type=int, default=START_YEAR,
+                        metavar="YEAR", help="First year to include in the backtest (default: full history)")
+    parser.add_argument("--cooldown-days", type=int, default=COOLDOWN_DAYS,
+                        metavar="DAYS", help="Calendar-day cooldown after a sell before next buy (default: %(default)s)")
+    args = parser.parse_args()
+
     tqqq_df = load_tqqq_data()
+    if args.start_year is not None:
+        tqqq_df = tqqq_df[tqqq_df.index.year >= args.start_year]
     print(f"TQQQ range  : {tqqq_df.index[0].date()} → {tqqq_df.index[-1].date()} ({len(tqqq_df)} rows)")
 
     tqqq_bench                         = run_benchmark(tqqq_df)
-    tqqq_strat, tqqq_trades, tqqq_open = run_strategy(tqqq_df)
+    tqqq_strat, tqqq_trades, tqqq_open = run_strategy(tqqq_df, cooldown_days=args.cooldown_days)
 
     qqq_df = load_qqq_data()
     qqq_start = tqqq_df.index[0]
@@ -443,13 +459,14 @@ def main() -> None:
     print(f"QQQ range   : {qqq_df.index[0].date()} → {qqq_df.index[-1].date()} ({len(qqq_df)} rows)")
 
     qqq_bench                        = run_benchmark(qqq_df)
-    qqq_strat, qqq_trades, qqq_open  = run_strategy(qqq_df)
+    qqq_strat, qqq_trades, qqq_open  = run_strategy(qqq_df, cooldown_days=args.cooldown_days)
 
     print(f"\nBuy signal  : breadth200 < {BUY_B200_THRESH}%")
     print(f"Vote gate   : VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW}  (≥1 of 2 must agree)")
     print(f"Sell signal : price rose ≥{DIVERGENCE_PRICE_RISE}% AND breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts")
     print(f"              over {DIVERGENCE_WINDOW} days, while breadth200 < {DIVERGENCE_BREADTH_CAP}%")
-    print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side\n")
+    print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")
+    print(f"Cooldown    : {args.cooldown_days} calendar days after each sell\n")
 
     print_metrics_quad(
         compute_metrics(tqqq_strat, tqqq_trades),
