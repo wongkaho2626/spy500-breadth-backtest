@@ -10,13 +10,47 @@ A market-timing backtest engine for NASDAQ-heavy portfolios (QQQ, TQQQ, NDX top 
 
 ## How It Works
 
-The strategy uses a breadth indicator (% of S&P 500 stocks above their 200-day moving average) to time entries and exits:
+The strategy uses the **S&P 500 breadth indicator** — the percentage of S&P 500 stocks trading above their 200-day moving average — as a market-health signal to time entries and exits.
 
-- **Buy signal** — breadth drops below a threshold (oversold market)
-- **Sell signal** — bearish divergence: price rises while breadth falls (trend exhaustion)
-- **Trailing stop** — optional downside protection after entry
+### Entry (go to market)
 
-The web app runs this logic entirely in the browser. No server needed.
+All three conditions must be true simultaneously:
+
+1. **Breadth < 26%** — fewer than 26% of S&P 500 stocks are above their 200-day MA, signalling a broadly oversold market
+2. **Vote gate passes** — either VIX > 30 (elevated fear) OR the NDX index is above its own 200-day MA; this avoids buying into a structurally broken trend
+3. **Cooldown has expired** — a user-configurable number of days (default 30) must have passed since the last exit, preventing immediate re-entry after a whipsaw
+
+When a buy fires, any accumulated cash contributions are swept into the portfolio before purchase. A **$1 commission + 0.05% slippage** is applied to the effective entry price.
+
+### Exit (bearish divergence)
+
+The strategy exits when all three divergence conditions are met within the same 60-day lookback window:
+
+1. **NDX price rose ≥ 3%** over the past 60 trading days — the index kept climbing…
+2. **Breadth fell ≥ 20 percentage points** over the same window — …but the average stock weakened underneath
+3. **Breadth is currently below 60%** — overall market health is not yet overbought enough to ignore the divergence
+
+This combination flags a narrowing rally — the index is being carried by a shrinking number of stocks, historically a precursor to a correction. The same slippage and commission costs apply on exit.
+
+### Portfolio structure
+
+Capital is split across up to five assets according to user-defined weights:
+
+| Slot | Asset | Description |
+|------|-------|-------------|
+| QQQ | NASDAQ-100 ETF | Core holding |
+| NDX Top-1 Stock | Largest NDX constituent that year | Concentration bet on the market leader |
+| TQQQ | 3× leveraged NDX ETF | Optional leverage |
+| SPY | S&P 500 ETF | Diversifier |
+| SOXX | Semiconductor ETF | Sector bet |
+
+If price data is unavailable for an asset on a given date, its allocation is automatically folded into QQQ. When out of the market, capital sits uninvested in per-asset cash buckets, ready for the next entry.
+
+### DCA contributions
+
+Monthly and/or yearly contributions accumulate in a cash reserve while out of market, then are swept proportionally into all buckets at the next buy signal.
+
+The web app runs all of this logic entirely in the browser — no server required.
 
 ## Web App Features
 
