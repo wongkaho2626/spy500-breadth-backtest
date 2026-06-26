@@ -1,5 +1,6 @@
 # Generated charts
 *.png
+!docs/*.png
 
 # Python
 __pycache__/
