@@ -1,0 +1,53 @@
+ticker,company,status,rows
+MSFT,Microsoft Corp.,OK,10127
+GOOGL,Alphabet Inc. (Google),OK,5475
+INTC,Intel Corp.,OK,11641
+CSCO,Cisco Systems Inc.,OK,9132
+AAPL,Apple Inc.,OK,11453
+QCOM,QUALCOMM Inc.,OK,8671
+AMZN,Amazon.com Inc.,OK,7301
+ORCL,Oracle Corp.,OK,10128
+META,Meta Platforms Inc.,OK,3523
+CMCSA,Comcast Corp.,OK,11641
+AMGN,Amgen Inc.,OK,10818
+NVDA,NVIDIA Corp.,OK,6876
+GILD,Gilead Sciences Inc.,OK,8645
+AVGO,Broadcom Inc.,OK,4225
+COST,Costco Wholesale Corp.,OK,10046
+DELL,Dell Inc.,OK,2455
+TSLA,Tesla Inc.,OK,4000
+PEP,PepsiCo Inc.,OK,13607
+CHTR,Charter Communications Inc.,OK,4121
+EBAY,eBay Inc.,OK,6958
+NFLX,Netflix Inc.,OK,6039
+ADBE,Adobe Inc.,OK,10021
+PYPL,PayPal Holdings Inc.,OK,2738
+TXN,Texas Instruments Inc.,OK,13607
+INTU,Intuit Inc.,OK,8357
+KHC,Kraft Heinz Co.,OK,2738
+WBA,Walgreens Boots Alliance Inc.,NO_DATA,0
+SBUX,Starbucks Corp.,OK,8536
+TEVA,Teva Pharmaceutical Industries Ltd.,OK,11157
+TMUS,T-Mobile US Inc.,OK,4805
+HON,Honeywell International Inc.,OK,16206
+BKNG,Booking Holdings Inc.,OK,6829
+REGN,Regeneron Pharmaceuticals Inc.,OK,8850
+JNPR,Juniper Networks Inc.,NO_DATA,0
+ROST,Ross Stores Inc.,OK,10276
+PCAR,PACCAR Inc.,OK,11641
+WDC,Western Digital Corp.,OK,11988
+ADI,Analog Devices Inc.,OK,11641
+BB,Research In Motion Ltd.,OK,6867
+CELG,Celgene Corp.,NO_DATA,0
+MXIM,Maxim Integrated Products Inc.,NO_DATA,0
+KRFT,Kraft Foods Inc.,NO_DATA,0
+PCLN,Priceline Group Inc.,OK,150
+JDSU,JDS Uniphase Corp.,NO_DATA,0
+SYMC,Symantec Corp.,NO_DATA,0
+VRTS,Veritas Software Corp.,OK,4374
+SEBL,Siebel Systems Inc.,NO_DATA,0
+LLTC,Linear Technology Corp.,NO_DATA,0
+NXTL,Nextel Communications Inc.,NO_DATA,0
+SUNW,Sun Microsystems Inc.,NO_DATA,0
+WCOM,WorldCom Inc.,NO_DATA,0
+BBBY,Bed Bath & Beyond Inc.,OK,6035
