@@ -76,6 +76,35 @@ Compares three annual stock-picking strategies using 10 Seeking Alpha picks/year
 
 Entry prices for non-CSV dates are estimated via SPX beta=1 proxy. Year-end exits use actual CSV stock prices.
 
+## Static Web App (Next.js)
+
+A client-side backtest UI lives in `webapp/nextjs/`. It runs the same strategy logic in the browser — no server required — and is deployed to GitHub Pages on every push to `main`.
+
+**Live URL:** `https://<github-user>.github.io/spy500-breadth-backtest/`
+
+### Local development
+
+```bash
+cd webapp/nextjs
+npm install
+npm run dev       # dev server at http://localhost:3000/spy500-breadth-backtest
+npm run build     # static export → webapp/nextjs/out/
+```
+
+### Architecture
+
+- **`app/page.tsx`** — main page; orchestrates sidebar, charts, metrics, and trade log tabs
+- **`lib/backtest.ts`** — TypeScript port of the Python backtest engine (same signal logic)
+- **`lib/loadData.ts`** — fetches CSV data files from `public/data/` at runtime
+- **`components/`** — Sidebar (parameters), MetricCards, SellSignalPanel, and Recharts-based chart components
+- **`next.config.mjs`** — `output: 'export'`, `basePath: '/spy500-breadth-backtest'` for GitHub Pages
+
+### Deployment
+
+`.github/workflows/deploy.yml` builds the Next.js app and deploys the `out/` directory to GitHub Pages on every push to `main`. The workflow uses Node 20 and caches `npm` dependencies.
+
+Data CSVs must be present in `webapp/nextjs/public/data/` for the static build to serve them correctly.
+
 ## CSV Data Files
 
 All CSVs use `MM/DD/YYYY` date format and comma-formatted prices (e.g. `"1,234.56"`). The `_parse_price()` helper strips commas before casting to float.
