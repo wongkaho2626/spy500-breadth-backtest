@@ -63,13 +63,20 @@ function nameToTicker(name: string): string | null {
   return null
 }
 
+async function fetchText(path: string): Promise<string> {
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
+  const res = await fetch(`${base}${path}`)
+  if (!res.ok) throw new Error(`Failed to load ${path} (HTTP ${res.status})`)
+  return res.text()
+}
+
 export async function loadAppData(): Promise<AppData> {
   // Load all files in parallel
   const [ndxText, breadthText, vixText, holdingsText] = await Promise.all([
-    fetch('/data/NASDAQ100.csv').then(r => r.text()),
-    fetch('/data/S5TH.csv').then(r => r.text()),
-    fetch('/data/VIX.csv').then(r => r.text()),
-    fetch('/data/nasdaq100_top10_holdings.csv').then(r => r.text()),
+    fetchText('/data/NASDAQ100.csv'),
+    fetchText('/data/S5TH.csv'),
+    fetchText('/data/VIX.csv'),
+    fetchText('/data/nasdaq100_top10_holdings.csv'),
   ])
 
   // Parse NDX prices (MM/DD/YYYY, "Price" column, comma-formatted)
@@ -115,8 +122,7 @@ export async function loadAppData(): Promise<AppData> {
   const allTickers = [...uniqueTickers, ...etfTickers]
   const stockResults = await Promise.allSettled(
     allTickers.map(ticker =>
-      fetch(`/data/stock_prices/${ticker}.csv`)
-        .then(r => r.ok ? r.text() : Promise.reject(new Error(`${ticker} not found`)))
+      fetchText(`/data/stock_prices/${ticker}.csv`)
         .then(text => ({ ticker, text }))
     )
   )
