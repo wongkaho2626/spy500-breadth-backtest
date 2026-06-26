@@ -1,10 +1,12 @@
 /** @type {import('next').NextConfig} */
+const BASE_PATH = '/spy500-breadth-backtest'
+
 const nextConfig = {
   output: 'export',
-  basePath: '/spy500-breadth-backtest',
-  assetPrefix: '/spy500-breadth-backtest',
+  basePath: BASE_PATH,
+  assetPrefix: BASE_PATH,
   env: {
-    NEXT_PUBLIC_BASE_PATH: '/spy500-breadth-backtest',
+    NEXT_PUBLIC_BASE_PATH: BASE_PATH,
   },
 }
 

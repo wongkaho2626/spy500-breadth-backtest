@@ -12,21 +12,25 @@ function parsePrice(s: string): number {
   return parseFloat(s.replace(/[",\s]/g, ''))
 }
 
-// Simple CSV parser (handles quoted fields with commas inside)
+// Quote-aware CSV field splitter used for both headers and body rows
+function parseCsvLine(line: string): string[] {
+  const fields: string[] = []
+  let cur = '', inQ = false
+  for (const c of line) {
+    if (c === '"') { inQ = !inQ }
+    else if (c === ',' && !inQ) { fields.push(cur); cur = '' }
+    else cur += c
+  }
+  fields.push(cur)
+  return fields
+}
+
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.trim().split('\n')
-  // Strip BOM and quotes from headers
-  const headers = lines[0].split(',').map(h => h.replace(/["\r﻿]/g, '').trim())
+  // Use quote-aware split so header names containing commas are not split incorrectly
+  const headers = parseCsvLine(lines[0]).map(h => h.replace(/[\r﻿]/g, '').trim())
   return lines.slice(1).map(line => {
-    // Handle quoted fields with commas inside
-    const fields: string[] = []
-    let cur = '', inQ = false
-    for (const c of line) {
-      if (c === '"') { inQ = !inQ }
-      else if (c === ',' && !inQ) { fields.push(cur); cur = '' }
-      else cur += c
-    }
-    fields.push(cur)
+    const fields = parseCsvLine(line)
     const rec: Record<string, string> = {}
     headers.forEach((h, i) => { rec[h] = (fields[i] ?? '').replace(/\r/g, '').trim() })
     return rec
@@ -65,8 +69,9 @@ function nameToTicker(name: string): string | null {
 
 async function fetchText(path: string): Promise<string> {
   const base = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
-  const res = await fetch(`${base}${path}`)
-  if (!res.ok) throw new Error(`Failed to load ${path} (HTTP ${res.status})`)
+  const url = `${base}${path}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Failed to load ${url} (HTTP ${res.status})`)
   return res.text()
 }
 
@@ -108,7 +113,7 @@ export async function loadAppData(): Promise<AppData> {
   const topHoldings = new Map<number, string>()
   for (const r of holdingsRows) {
     if (r['Rank'] === '1') {
-      const year   = parseInt(r['Year'])
+      const year   = parseInt(r['Year'], 10)
       const ticker = nameToTicker(r['Holding'])
       if (ticker) topHoldings.set(year, ticker)
     }
@@ -136,12 +141,20 @@ export async function loadAppData(): Promise<AppData> {
   const allDates = data.map(r => r.date)
 
   for (const result of stockResults) {
-    if (result.status !== 'fulfilled') continue
+    if (result.status !== 'fulfilled') {
+      console.warn('[loadData] Stock CSV load failed:', result.reason)
+      continue
+    }
     const { ticker, text } = result.value
     const rows = parseCSV(text)
 
+    if (rows.length === 0) {
+      console.warn(`[loadData] ${ticker}: CSV has no data rows, skipping`)
+      continue
+    }
+
     // Detect format: stock CSVs have 'Close' column; ETF CSVs (TQQQ/SPY/SOXX) have 'price' column
-    const priceCol = rows[0] && ('price' in rows[0]) ? 'price' : 'Close'
+    const priceCol = ('price' in rows[0]) ? 'price' : 'Close'
 
     const rawMap = new Map<string, number>()
     for (const r of rows) {
