@@ -75,11 +75,22 @@ async function fetchText(path: string): Promise<string> {
   return res.text()
 }
 
+// Continuous daily breadth (2002+) built by build_breadth_daily.py; S5TH.csv
+// alone is only daily from 2007 (bimonthly before), which corrupts row-based
+// lookback windows — the fallback truncates it to the daily era.
+async function fetchBreadth(): Promise<{ text: string; daily: boolean }> {
+  try {
+    return { text: await fetchText('/data/breadth_daily.csv'), daily: true }
+  } catch {
+    return { text: await fetchText('/data/S5TH.csv'), daily: false }
+  }
+}
+
 export async function loadAppData(): Promise<AppData> {
   // Load all files in parallel
-  const [ndxText, breadthText, vixText, holdingsText] = await Promise.all([
+  const [ndxText, breadthFile, vixText, holdingsText] = await Promise.all([
     fetchText('/data/NASDAQ100.csv'),
-    fetchText('/data/S5TH.csv'),
+    fetchBreadth(),
     fetchText('/data/VIX.csv'),
     fetchText('/data/nasdaq100_top10_holdings.csv'),
   ])
@@ -91,11 +102,14 @@ export async function loadAppData(): Promise<AppData> {
     .filter(([, v]) => !isNaN(v))
     .sort((a, b) => a[0].localeCompare(b[0]))
 
-  // Parse breadth (S5TH.csv — % S&P 500 stocks above 200-day MA)
-  const breadthRows = parseCSV(breadthText)
+  // Parse breadth (% S&P 500 stocks above 200-day MA):
+  // breadth_daily.csv has a "breadth" column; S5TH.csv has "Price"
+  const breadthRows = parseCSV(breadthFile.text)
+  const breadthCol = breadthFile.daily ? 'breadth' : 'Price'
   const breadthPrices: [string, number][] = breadthRows
-    .map(r => [parseMMDDYYYY(r['Date']), parsePrice(r['Price'])] as [string, number])
+    .map(r => [parseMMDDYYYY(r['Date']), parsePrice(r[breadthCol])] as [string, number])
     .filter(([, v]) => !isNaN(v))
+    .filter(([d]) => breadthFile.daily || d >= '2007-01-01')
     .sort((a, b) => a[0].localeCompare(b[0]))
 
   // Parse VIX

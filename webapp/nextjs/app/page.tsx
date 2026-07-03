@@ -30,7 +30,7 @@ const TABS: { id: Tab; label: string }[] = [
 const DEFAULT_FORM: FormState = {
   qqq: 60, stock: 30, tqqq: 10, spy: 0, soxx: 0,
   initial_capital: 10000, monthly_contribution: 0, yearly_contribution: 0,
-  cooldown_days: 30, start_date: '', end_date: '',
+  cooldown_days: 15, start_date: '', end_date: '',
 }
 
 export default function Page() {
@@ -261,7 +261,7 @@ export default function Page() {
                       <thead>
                         <tr>
                           <th>#</th><th>Entry</th><th>Exit</th><th>Held</th>
-                          <th>Ticker</th><th>Buy Signal</th><th>Return</th><th>Max DD</th>
+                          <th>Ticker</th><th>Buy Signal</th><th>Sell Signal</th><th>Return</th><th>Max DD</th>
                           <th>Entry $</th><th>Exit $</th><th>Net P&amp;L</th><th>Accum.</th>
                         </tr>
                       </thead>
@@ -279,6 +279,14 @@ export default function Page() {
                               <td>{open ? fmtHeld(t.entry_date, t.current_date!) : fmtHeld(t.entry_date, t.exit_date!)}</td>
                               <td><strong>{t.top1_ticker || '—'}</strong></td>
                               <td>{t.buy_trigger || '—'}</td>
+                              <td>{open
+                                ? <span style={{ color: 'var(--muted)', fontSize: 11 }}>holding</span>
+                                : <span style={{
+                                    background: t.sell_reason === 'trailing-stop' ? '#fef2f2' : t.sell_reason === 'climax-top' ? '#fff7ed' : '#f5f3ff',
+                                    color: t.sell_reason === 'trailing-stop' ? '#dc2626' : t.sell_reason === 'climax-top' ? '#c2410c' : '#6d28d9',
+                                    fontSize: 10, padding: '1px 6px', borderRadius: 3, fontWeight: 600, whiteSpace: 'nowrap',
+                                  }}>{t.sell_reason || '—'}</span>}
+                              </td>
                               <td className={pctCls(t.return_pct)}>{fmtPct(t.return_pct)}</td>
                               <td className={pctCls(t.max_drawdown_pct)}>{fmtPct(t.max_drawdown_pct)}</td>
                               <td>{fmtDollar(entryV)}</td>

@@ -6,6 +6,12 @@ export const DIVERGENCE_WINDOW      = 60
 export const DIVERGENCE_PRICE_RISE  = 3.0
 export const DIVERGENCE_BREADTH_FALL = 20.0
 export const DIVERGENCE_BREADTH_CAP  = 60.0
+// Climax-top exit: NDX extended above its 10-day MA AND MACD(12,26,9) flipped
+// bearish, both within CLIMAX_VOTE_WINDOW days AFTER entry
+export const EXT10_PCT          = 5.0
+export const CLIMAX_VOTE_WINDOW = 10
+// Trailing stop on NDX (the signal index)
+export const TRAILING_STOP_PCT  = 25.0
 export const COMMISSION = 1.0
 export const SLIPPAGE   = 0.0005
 
@@ -20,6 +26,8 @@ export interface DayData {
   vote_gate: boolean  // vix_vote || ma200_vote
   price_rose: boolean // (price - price[i-DIVERGENCE_WINDOW]) / price[i-DIVERGENCE_WINDOW] * 100 >= DIVERGENCE_PRICE_RISE
   breadth_fell: boolean // breadth[i-DIVERGENCE_WINDOW] - breadth[i] >= DIVERGENCE_BREADTH_FALL
+  macd_cross: boolean // MACD(12,26,9) histogram flipped negative today
+  ext10: boolean      // price >= EXT10_PCT% above its 10-day MA
 }
 
 export interface BacktestParams {
@@ -67,6 +75,12 @@ export interface SellProximity {
   price_rise_pct: number; breadth_fall_pts: number; breadth_current: number
   price_rise_needed: number; breadth_fall_needed: number; breadth_cap: number
   price_rise_met: boolean; breadth_fall_met: boolean; breadth_cap_met: boolean
+  // Climax top: both must fire within climax_window days (post-entry)
+  macd_days_ago: number | null; ext_days_ago: number | null
+  climax_window: number; climax_met: boolean
+  // Trailing stop on NDX since entry
+  ndx_high: number; ndx_current: number
+  drop_from_high_pct: number; trail_stop_pct: number; trail_met: boolean
 }
 
 // safe: get value from a price map, returns NaN if missing
@@ -111,6 +125,28 @@ export function prepareData(
   // Compute MA200
   const ma200 = rollingMean(prices, MA200_WINDOW)
 
+  // Climax-top components: MACD(12,26,9) bearish cross + extension above 10d MA
+  const ma10 = rollingMean(prices, 10)
+  const macdCross: boolean[] = new Array(prices.length).fill(false)
+  const ext10Arr: boolean[] = new Array(prices.length).fill(false)
+  let ema12 = prices[0] ?? 0
+  let ema26 = prices[0] ?? 0
+  let signal = 0
+  let prevHist = 0
+  for (let i = 0; i < prices.length; i++) {
+    if (i > 0) {
+      ema12 = prices[i] * (2 / 13) + ema12 * (1 - 2 / 13)
+      ema26 = prices[i] * (2 / 27) + ema26 * (1 - 2 / 27)
+    }
+    const macd = ema12 - ema26
+    signal = i === 0 ? macd : macd * (2 / 10) + signal * (1 - 2 / 10)
+    const hist = macd - signal
+    macdCross[i] = i > 0 && hist < 0 && prevHist >= 0
+    prevHist = hist
+    const m10 = ma10[i]
+    ext10Arr[i] = m10 !== null && prices[i] / m10 - 1 >= EXT10_PCT / 100
+  }
+
   // Forward-fill VIX (some dates may be missing)
   let lastVix = NaN
   for (let i = 0; i < raw.length; i++) {
@@ -139,7 +175,8 @@ export function prepareData(
     }
 
     rows.push({ date: r.date, price: r.price, breadth: r.breadth, vix: r.vix,
-      ma200: ma, vix_vote, ma200_vote, vote_gate, price_rose, breadth_fell })
+      ma200: ma, vix_vote, ma200_vote, vote_gate, price_rose, breadth_fell,
+      macd_cross: macdCross[i], ext10: ext10Arr[i] })
   }
 
   return rows
@@ -167,6 +204,10 @@ export function runStrategy(
   let entryDate: string | null = null
   let buyTrigger = ''
   let tradeLowVal = 0
+  // Climax/trail state — signals only count AFTER entry
+  let ndxHigh = 0
+  let macdAge = Number.MAX_SAFE_INTEGER
+  let extAge  = Number.MAX_SAFE_INTEGER
 
   // Buckets
   const ic = params.initial_capital
@@ -268,6 +309,9 @@ export function runStrategy(
         holdingTicker = stockTicker
         entryDate     = date
         tradeLowVal   = effQQQ + effStock + effTQQQ + effSPY + effSOXX
+        ndxHigh       = ndxPrice
+        macdAge       = Number.MAX_SAFE_INTEGER
+        extAge        = Number.MAX_SAFE_INTEGER
         position      = 'IN'
         buyTrigger    = (row.vix_vote ? 'VIX' : '') + (row.vix_vote && row.ma200_vote ? '+' : '') + (row.ma200_vote ? 'MA200' : '')
 
@@ -276,9 +320,18 @@ export function runStrategy(
       }
 
     } else { // IN
+      ndxHigh = Math.max(ndxHigh, ndxPrice)
+      macdAge = row.macd_cross ? 0 : macdAge + 1
+      extAge  = row.ext10      ? 0 : extAge + 1
       const bearishDiv = row.price_rose && row.breadth_fell && breadth < DIVERGENCE_BREADTH_CAP
+      const climax     = macdAge < CLIMAX_VOTE_WINDOW && extAge < CLIMAX_VOTE_WINDOW
+      const trailHit   = ndxPrice <= ndxHigh * (1 - TRAILING_STOP_PCT / 100)
+      const sellReason = bearishDiv ? 'bearish-divergence'
+        : climax ? 'climax-top'
+        : trailHit ? 'trailing-stop'
+        : null
 
-      if (bearishDiv) {
+      if (sellReason) {
         const stockPxExit = safe(holdingTicker ? (alignedStocks.get(holdingTicker) ?? null) : null, date)
         const tqqqPxExit  = safe(alignedTqqq, date)
         const spyPxExit   = safe(alignedSpy,  date)
@@ -318,7 +371,7 @@ export function runStrategy(
         trades.push({
           entry_date: entryDate!, exit_date: date,
           return_pct: grossRet * 100, max_drawdown_pct: maxDdPct,
-          accumulated: totalProc, buy_trigger: buyTrigger, sell_reason: 'bearish-divergence',
+          accumulated: totalProc, buy_trigger: buyTrigger, sell_reason: sellReason,
           top1_ticker: holdingTicker ?? undefined, stock_active: stockActive,
           tqqq_active: tqqqActive, spy_active: spyActive, soxx_active: soxxActive,
           qqq_entry_val: qqqEntryVal, qqq_exit_val: qqqExitVal,
@@ -534,6 +587,23 @@ export function runBacktest(
     const pr   = (last.price - past.price) / past.price * 100
     const bf   = past.breadth - last.breadth
     const capOk = last.breadth < DIVERGENCE_BREADTH_CAP
+
+    // Replay post-entry state for climax-top and trailing-stop proximity
+    // (mirrors runStrategy: signals only count AFTER the entry day)
+    const entryIdx = data.findIndex(r => r.date === openTrade!.entry_date)
+    let ndxHigh = entryIdx >= 0 ? data[entryIdx].price : last.price
+    let macdAge = Number.MAX_SAFE_INTEGER
+    let extAge  = Number.MAX_SAFE_INTEGER
+    for (let i = Math.max(entryIdx, 0) + 1; i < data.length; i++) {
+      ndxHigh = Math.max(ndxHigh, data[i].price)
+      macdAge = data[i].macd_cross ? 0 : macdAge + 1
+      extAge  = data[i].ext10      ? 0 : extAge + 1
+    }
+    const neverFired = data.length  // ages beyond series length mean "never"
+    const macdDaysAgo = macdAge > neverFired ? null : macdAge
+    const extDaysAgo  = extAge  > neverFired ? null : extAge
+    const dropPct = ndxHigh > 0 ? (1 - last.price / ndxHigh) * 100 : 0
+
     sell_proximity = {
       price_rise_pct: parseFloat(pr.toFixed(2)),
       breadth_fall_pts: parseFloat(bf.toFixed(2)),
@@ -544,6 +614,15 @@ export function runBacktest(
       price_rise_met: pr >= DIVERGENCE_PRICE_RISE,
       breadth_fall_met: bf >= DIVERGENCE_BREADTH_FALL,
       breadth_cap_met: capOk,
+      macd_days_ago: macdDaysAgo,
+      ext_days_ago: extDaysAgo,
+      climax_window: CLIMAX_VOTE_WINDOW,
+      climax_met: macdAge < CLIMAX_VOTE_WINDOW && extAge < CLIMAX_VOTE_WINDOW,
+      ndx_high: parseFloat(ndxHigh.toFixed(2)),
+      ndx_current: parseFloat(last.price.toFixed(2)),
+      drop_from_high_pct: parseFloat(dropPct.toFixed(2)),
+      trail_stop_pct: TRAILING_STOP_PCT,
+      trail_met: dropPct >= TRAILING_STOP_PCT,
     }
   }
 
@@ -565,6 +644,8 @@ export function runBacktest(
       buy_b200_thresh: BUY_B200_THRESH, vix_buy_thresh: VIX_BUY_THRESH,
       divergence_window: DIVERGENCE_WINDOW, divergence_price_rise: DIVERGENCE_PRICE_RISE,
       divergence_breadth_fall: DIVERGENCE_BREADTH_FALL, divergence_breadth_cap: DIVERGENCE_BREADTH_CAP,
+      ext10_pct: EXT10_PCT, climax_vote_window: CLIMAX_VOTE_WINDOW,
+      trailing_stop_pct: TRAILING_STOP_PCT,
     },
   }
 }

@@ -7,6 +7,7 @@ export interface Trade {
   exit_date?: string
   top1_ticker?: string
   buy_trigger?: string
+  sell_reason?: string
   return_pct?: number
   max_drawdown_pct?: number
   accumulated?: number
@@ -21,6 +22,12 @@ export interface SellProximity {
   price_rise_pct: number; breadth_fall_pts: number; breadth_current: number
   price_rise_needed: number; breadth_fall_needed: number; breadth_cap: number
   price_rise_met: boolean; breadth_fall_met: boolean; breadth_cap_met: boolean
+  // Climax top: both must fire within climax_window days (post-entry)
+  macd_days_ago: number | null; ext_days_ago: number | null
+  climax_window: number; climax_met: boolean
+  // Trailing stop on NDX since entry
+  ndx_high: number; ndx_current: number
+  drop_from_high_pct: number; trail_stop_pct: number; trail_met: boolean
 }
 
 export interface BacktestResponse {
