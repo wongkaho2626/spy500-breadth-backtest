@@ -16,6 +16,11 @@ from pathlib import Path
 DATA_DIR      = Path(__file__).parent
 NDX_FILE      = DATA_DIR / "NASDAQ100.csv"
 BREADTH_FILE  = DATA_DIR / "S5TH.csv"
+# Continuous daily breadth (2002+) built by build_breadth_daily.py.
+# S5TH.csv alone is only daily from 2007 — before that it is bimonthly, which
+# corrupts row-based lookback windows (a "60-day" window spans ~10 years).
+BREADTH_DAILY_FILE = DATA_DIR / "breadth_daily.csv"
+BREADTH_DAILY_MIN  = "2007-01-01"  # fallback cutoff when daily file is absent
 HOLDINGS_FILE = DATA_DIR / "NASDAQ100" / "nasdaq100_top_holdings.csv"
 PRICES_DIR    = DATA_DIR / "NASDAQ100" / "stock_prices"
 
@@ -53,16 +58,29 @@ def _parse_price(s: pd.Series) -> pd.Series:
     return s.astype(str).str.replace(",", "").astype(float)
 
 
+def _load_breadth() -> pd.DataFrame:
+    """Prefer the continuous daily series (breadth_daily.csv, 2002+); S5TH.csv
+    alone is bimonthly before 2007, which corrupts row-based windows."""
+    if BREADTH_DAILY_FILE.exists():
+        b200 = pd.read_csv(BREADTH_DAILY_FILE)
+        b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
+        b200.set_index("Date", inplace=True)
+        return b200.rename(columns={"breadth": "Price"})
+    b200 = pd.read_csv(BREADTH_FILE)
+    b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
+    b200.set_index("Date", inplace=True)
+    b200["Price"] = _parse_price(b200["Price"])
+    # S5TH is bimonthly before 2007 — drop the sparse era
+    return b200[b200.index >= BREADTH_DAILY_MIN]
+
+
 def load_ndx_breadth() -> pd.DataFrame:
     ndx = pd.read_csv(NDX_FILE)
     ndx["Date"] = pd.to_datetime(ndx["Date"], format="%m/%d/%Y")
     ndx.set_index("Date", inplace=True)
     ndx["price"] = _parse_price(ndx["Price"])
 
-    b200 = pd.read_csv(BREADTH_FILE)
-    b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
-    b200.set_index("Date", inplace=True)
-    b200["Price"] = _parse_price(b200["Price"])
+    b200 = _load_breadth()
 
     merged = ndx[["price"]].join(
         b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"

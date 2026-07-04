@@ -5,8 +5,15 @@ BUY  (while OUT): breadth200 < 26%
                   AND at least 1 of 2 vote:
                     • VIX > 30  (fear spike / panic bottom)
                     • price > MA200  (uptrend pullback — safe to buy immediately)
-SELL (while IN):  Bearish divergence — price rose ≥ 3% over 60 days
-                  while breadth200 fell ≥ 20 pts AND breadth200 < 60%
+SELL (while IN):  any of —
+                  • Bearish divergence: price rose ≥ 3% over 60 days
+                    while breadth200 fell ≥ 20 pts AND breadth200 < 60%
+                  • Climax top: within 10 days, price was extended ≥ 5% above
+                    its 10-day MA AND MACD(12,26,9) flipped bearish
+                  • Trailing stop: price 25% below the high since entry
+                  (both add-on exits walk-forward validated on the
+                   2002–2013 / 2014–2026 splits — see qqq_signal_combo_search.py
+                   and qqq_improve.py)
 """
 import argparse
 import numpy as np
@@ -24,6 +31,11 @@ except Exception as _fetch_err:
 DATA_DIR     = Path(__file__).parent
 NDX_FILE     = DATA_DIR / "NASDAQ100.csv"
 BREADTH_FILE = DATA_DIR / "S5TH.csv"
+# Continuous daily breadth (2002+) built by build_breadth_daily.py.
+# S5TH.csv alone is only daily from 2007 — before that it is bimonthly, which
+# corrupts row-based lookback windows (a "60-day" window spans ~10 years).
+BREADTH_DAILY_FILE = DATA_DIR / "breadth_daily.csv"
+BREADTH_DAILY_MIN  = "2007-01-01"  # fallback cutoff when daily file is absent
 VIX_FILE     = DATA_DIR / "VIX.csv"
 
 # ── Buy thresholds ────────────────────────────────────────────────────────────
@@ -36,6 +48,13 @@ DIVERGENCE_WINDOW       = 60    # trading days lookback
 DIVERGENCE_PRICE_RISE   = 3.0   # % price rise over window
 DIVERGENCE_BREADTH_FALL = 20.0  # pts breadth200 drop over window
 DIVERGENCE_BREADTH_CAP  = 60.0  # breadth200 must be below this
+
+# ── Sell — climax top (extension + momentum break within a window) ───────────
+EXT10_PCT           = 5.0   # % above 10-day MA that counts as "extended"
+CLIMAX_VOTE_WINDOW  = 10    # days within which both climax signals must fire
+
+# ── Sell — trailing stop ──────────────────────────────────────────────────────
+TRAILING_STOP_PCT = 25.0    # % below the high since entry
 
 # ── Shared ────────────────────────────────────────────────────────────────────
 INITIAL_CAPITAL = 10_000.0
@@ -56,10 +75,18 @@ def load_data() -> pd.DataFrame:
     ndx = ndx.rename(columns={"Price": "price"})
     ndx["price"] = _parse_price(ndx["price"])
 
-    b200 = pd.read_csv(BREADTH_FILE)
-    b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
-    b200.set_index("Date", inplace=True)
-    b200["Price"] = _parse_price(b200["Price"])
+    if BREADTH_DAILY_FILE.exists():
+        b200 = pd.read_csv(BREADTH_DAILY_FILE)
+        b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
+        b200.set_index("Date", inplace=True)
+        b200 = b200.rename(columns={"breadth": "Price"})
+    else:
+        b200 = pd.read_csv(BREADTH_FILE)
+        b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
+        b200.set_index("Date", inplace=True)
+        b200["Price"] = _parse_price(b200["Price"])
+        # S5TH is bimonthly before 2007 — drop the sparse era
+        b200 = b200[b200.index >= BREADTH_DAILY_MIN]
 
     vix = pd.read_csv(VIX_FILE)
     vix.columns = [c.strip().strip('"').lstrip("﻿") for c in vix.columns]
@@ -92,6 +119,17 @@ def load_data() -> pd.DataFrame:
     bp = merged["breadth"].shift(DIVERGENCE_WINDOW)
     merged["price_rose"]   = ((merged["price"] - pp) / pp * 100 >= DIVERGENCE_PRICE_RISE).fillna(False)
     merged["breadth_fell"] = ((bp - merged["breadth"]) >= DIVERGENCE_BREADTH_FALL).fillna(False)
+
+    # Pre-compute climax-top components: price extended ≥ EXT10_PCT above its
+    # 10-day MA, and MACD(12,26,9) histogram flipping negative. The exit fires
+    # when both occur within CLIMAX_VOTE_WINDOW days of each other AND after
+    # the entry date (tracked in run_strategy, so a pre-entry climax can't
+    # trigger an immediate sell).
+    close = merged["price"]
+    macd = close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
+    hist = macd - macd.ewm(span=9, adjust=False).mean()
+    merged["macd_cross"] = ((hist < 0) & (hist.shift(1) >= 0)).fillna(False)
+    merged["ext10"] = (close / close.rolling(10).mean() - 1 >= EXT10_PCT / 100).fillna(False)
 
     return merged
 
@@ -134,15 +172,31 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, l
                 raw_entry  = price
                 entry_date = date
                 trade_low  = price
+                trade_high = price
+                # climax signal ages (days since firing AFTER entry); start "stale"
+                macd_age = ext_age = 10**9
                 position   = "IN"
                 buy_trigger = (("VIX" if row["vix_vote"] else "") +
                                ("+" if row["vix_vote"] and row["ma200_vote"] else "") +
                                ("MA200" if row["ma200_vote"] else ""))
 
         elif position == "IN":
-            trade_low = min(trade_low, price)
+            trade_low  = min(trade_low, price)
+            trade_high = max(trade_high, price)
+            macd_age = 0 if bool(row["macd_cross"]) else macd_age + 1
+            ext_age  = 0 if bool(row["ext10"])      else ext_age + 1
             bearish_div = price_rose and breadth_fell and breadth < DIVERGENCE_BREADTH_CAP
+            climax      = (macd_age < CLIMAX_VOTE_WINDOW) and (ext_age < CLIMAX_VOTE_WINDOW)
+            trail_hit   = price <= trade_high * (1 - TRAILING_STOP_PCT / 100)
             if bearish_div:
+                sell_reason = "bearish-divergence"
+            elif climax:
+                sell_reason = "climax-top"
+            elif trail_hit:
+                sell_reason = "trailing-stop"
+            else:
+                sell_reason = None
+            if sell_reason:
                 eff_exit  = price * (1 - SLIPPAGE)
                 gross_ret = (eff_exit - eff_entry) / eff_entry
                 portfolio *= (1 + gross_ret)
@@ -157,7 +211,7 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, l
                     "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
                     "accumulated":      portfolio,
                     "buy_trigger":      buy_trigger,
-                    "sell_reason":      "bearish-divergence",
+                    "sell_reason":      sell_reason,
                     "cooldown_until":   cooldown_until,
                 })
                 position = "OUT"
@@ -330,8 +384,10 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     fig.suptitle(
         "NASDAQ 100 Breadth Strategy  (+Voting Gate)\n"
         f"BUY: breadth200 < {BUY_B200_THRESH}%  AND  (VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW})  [≥1 of 2]\n"
-        f"SELL: price rose ≥{DIVERGENCE_PRICE_RISE}% over {DIVERGENCE_WINDOW}d  AND  "
-        f"breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts  AND  breadth200 < {DIVERGENCE_BREADTH_CAP}%\n"
+        f"SELL: divergence (price ≥{DIVERGENCE_PRICE_RISE}%/{DIVERGENCE_WINDOW}d + breadth200 "
+        f"-{DIVERGENCE_BREADTH_FALL}pts < {DIVERGENCE_BREADTH_CAP}%)  OR  "
+        f"climax top (≥{EXT10_PCT:.0f}% above 10dMA + MACD cross)  OR  "
+        f"trailing stop ({TRAILING_STOP_PCT:.0f}%)\n"
         f"Starting capital: ${INITIAL_CAPITAL:,.0f}",
         fontsize=9, fontweight="bold"
     )
@@ -415,6 +471,9 @@ def main() -> None:
     print(f"Vote gate   : VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW}  (≥1 of 2 must agree)")
     print(f"Sell signal : price rose ≥{DIVERGENCE_PRICE_RISE}% AND breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts")
     print(f"              over {DIVERGENCE_WINDOW} days, while breadth200 < {DIVERGENCE_BREADTH_CAP}%")
+    print(f"           OR climax top: ≥{EXT10_PCT:.0f}% above 10d MA + MACD bearish cross "
+          f"(within {CLIMAX_VOTE_WINDOW}d)")
+    print(f"           OR trailing stop: {TRAILING_STOP_PCT:.0f}% below high since entry")
     print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")
     print(f"Cooldown    : {args.cooldown_days} calendar days after each sell")
 
