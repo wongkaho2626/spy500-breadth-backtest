@@ -182,6 +182,47 @@ export function prepareData(
   return rows
 }
 
+// Replay the signal state machine over the rows BEFORE the backtest window
+// to decide whether the strategy would already hold a position at the start
+// date. Mirrors the entry/exit conditions in runStrategy (position only).
+export function isInPositionAt(allData: DayData[], startDate: string, cooldownDays: number): boolean {
+  let position: 'IN' | 'OUT' = 'OUT'
+  let cooldownUntil: string | null = null
+  let ndxHigh = 0
+  let macdAge = Number.MAX_SAFE_INTEGER
+  let extAge  = Number.MAX_SAFE_INTEGER
+
+  for (const row of allData) {
+    if (row.date >= startDate) break
+
+    if (position === 'OUT') {
+      const cooldownOk = cooldownUntil === null || row.date > cooldownUntil
+      if (!isNaN(row.breadth) && row.breadth < BUY_B200_THRESH && row.vote_gate && cooldownOk) {
+        position = 'IN'
+        ndxHigh  = row.price
+        macdAge  = Number.MAX_SAFE_INTEGER
+        extAge   = Number.MAX_SAFE_INTEGER
+      }
+    } else {
+      ndxHigh = Math.max(ndxHigh, row.price)
+      macdAge = row.macd_cross ? 0 : macdAge + 1
+      extAge  = row.ext10      ? 0 : extAge + 1
+      const bearishDiv = row.price_rose && row.breadth_fell && row.breadth < DIVERGENCE_BREADTH_CAP
+      const climax     = macdAge < CLIMAX_VOTE_WINDOW && extAge < CLIMAX_VOTE_WINDOW
+      const trailHit   = row.price <= ndxHigh * (1 - TRAILING_STOP_PCT / 100)
+
+      if (bearishDiv || climax || trailHit) {
+        position = 'OUT'
+        const cooldownDate = new Date(row.date)
+        cooldownDate.setDate(cooldownDate.getDate() + cooldownDays)
+        cooldownUntil = cooldownDate.toISOString().slice(0, 10)
+      }
+    }
+  }
+
+  return position === 'IN'
+}
+
 export function runStrategy(
   data: DayData[],
   topHoldings: Map<number, string>,    // year -> ticker
@@ -191,6 +232,7 @@ export function runStrategy(
   alignedSoxx: Map<string, number> | null,
   params: BacktestParams,
   wQQQ: number, wStock: number, wTQQQ: number, wSPY: number, wSOXX: number,
+  forceEntryFirstDay = false,  // strategy was already IN before the window start
 ): { portfolio: [string, number][]; trades: Trade[]; openTrade: Trade | null; totalContrib: number } {
 
   let position: 'IN' | 'OUT' = 'OUT'
@@ -226,7 +268,8 @@ export function runStrategy(
   // Bucket-level entry tracking
   let qqqEntryVal = 0, stockEntryVal = 0, tqqqEntryVal = 0, spyEntryVal = 0, soxxEntryVal = 0
 
-  for (const row of data) {
+  for (let idx = 0; idx < data.length; idx++) {
+    const row = data[idx]
     const date = row.date
     const dateMonth = parseInt(date.slice(5, 7))
     const dateYear  = parseInt(date.slice(0, 4))
@@ -246,7 +289,8 @@ export function runStrategy(
     if (position === 'OUT') {
       // Determine if cooldown has passed
       const cooldownOk = cooldownUntil === null || date > cooldownUntil
-      const doBuy = !isNaN(breadth) && breadth < BUY_B200_THRESH && row.vote_gate && cooldownOk
+      const carryIn = forceEntryFirstDay && idx === 0
+      const doBuy = carryIn || (!isNaN(breadth) && breadth < BUY_B200_THRESH && row.vote_gate && cooldownOk)
 
       if (doBuy) {
         const year = dateYear
@@ -313,7 +357,9 @@ export function runStrategy(
         macdAge       = Number.MAX_SAFE_INTEGER
         extAge        = Number.MAX_SAFE_INTEGER
         position      = 'IN'
-        buyTrigger    = (row.vix_vote ? 'VIX' : '') + (row.vix_vote && row.ma200_vote ? '+' : '') + (row.ma200_vote ? 'MA200' : '')
+        buyTrigger    = carryIn
+          ? 'carry-in'
+          : (row.vix_vote ? 'VIX' : '') + (row.vix_vote && row.ma200_vote ? '+' : '') + (row.ma200_vote ? 'MA200' : '')
 
         qqqEntryVal  = qqqBucket;   stockEntryVal = stockBucket
         tqqqEntryVal = tqqqBucket;  spyEntryVal   = spyBucket;   soxxEntryVal = soxxBucket
@@ -533,6 +579,12 @@ export function runBacktest(
   if (params.start_date) data = data.filter(r => r.date >= params.start_date!)
   if (params.end_date)   data = data.filter(r => r.date <= params.end_date!)
 
+  // If the start date falls between a buy and its sell signal (strategy would
+  // already be holding), enter the market on the first day of the window
+  const carryIn = params.start_date
+    ? isInPositionAt(allData, params.start_date, params.cooldown_days)
+    : false
+
   // Slice aligned maps to matching dates
   const dateSet = new Set(data.map(r => r.date))
   function sliceMap(m: Map<string, number> | null): Map<string, number> | null {
@@ -546,7 +598,7 @@ export function runBacktest(
 
   const { portfolio, trades, openTrade, totalContrib } = runStrategy(
     data, topHoldings, slicedStocks, sliceMap(alignedTqqq), sliceMap(alignedSpy), sliceMap(alignedSoxx),
-    params, wQQQ, wStock, wTQQQ, wSPY, wSOXX,
+    params, wQQQ, wStock, wTQQQ, wSPY, wSOXX, carryIn,
   )
   const benchmark = runBenchmark(data, params.initial_capital)
 
