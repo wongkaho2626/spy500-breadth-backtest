@@ -1,9 +1,18 @@
 """
 SOXX (iShares Semiconductor ETF) Breadth Strategy
 
-BUY  (while OUT): breadth200 < 18%
-SELL (while IN):  Bearish divergence — price rose ≥ 5% over 60 days
-                  while breadth200 fell ≥ 20 pts AND breadth200 < 50%
+Same signal set as qqq_backtest.py, applied to SOXX:
+
+BUY  (while OUT): breadth200 < 26%
+                  AND at least 1 of 2 vote:
+                    • VIX > 30  (fear spike / panic bottom)
+                    • price > MA200  (uptrend pullback)
+SELL (while IN):  any of —
+                  • Bearish divergence: price rose ≥ 3% over 60 days
+                    while breadth200 fell ≥ 20 pts AND breadth200 < 60%
+                  • Climax top: within 10 days, price extended ≥ 5% above its
+                    10-day MA AND MACD(12,26,9) flipped bearish (post-entry)
+                  • Trailing stop: price 25% below the high since entry
 """
 import numpy as np
 import pandas as pd
@@ -13,25 +22,58 @@ from pathlib import Path
 
 DATA_DIR     = Path(__file__).parent
 SOXX_FILE    = DATA_DIR / "SOXX.csv"
+VIX_FILE     = DATA_DIR / "VIX.csv"
 BREADTH_FILE = DATA_DIR / "S5TH.csv"
+# Continuous daily breadth (2002+) built by build_breadth_daily.py.
+# S5TH.csv alone is only daily from 2007 — before that it is bimonthly, which
+# corrupts row-based lookback windows (a "60-day" window spans ~10 years).
+BREADTH_DAILY_FILE = DATA_DIR / "breadth_daily.csv"
+BREADTH_DAILY_MIN  = "2007-01-01"  # fallback cutoff when daily file is absent
 
 # ── Buy thresholds ────────────────────────────────────────────────────────────
-BUY_B200_THRESH = 18.0   # breadth200 must be below this
+BUY_B200_THRESH = 26.0   # breadth200 must be below this
+VIX_BUY_THRESH  = 30.0   # VIX vote: fear spike (VIX > 30)
+MA200_WINDOW    = 200    # MA200 vote: price above 200-day moving average
 
 # ── Sell — bearish divergence ─────────────────────────────────────────────────
 DIVERGENCE_WINDOW       = 60    # trading days lookback
-DIVERGENCE_PRICE_RISE   = 5.0   # % price rise over window
+DIVERGENCE_PRICE_RISE   = 3.0   # % price rise over window
 DIVERGENCE_BREADTH_FALL = 20.0  # pts breadth200 drop over window
-DIVERGENCE_BREADTH_CAP  = 50.0  # breadth200 must be below this
+DIVERGENCE_BREADTH_CAP  = 60.0  # breadth200 must be below this
+
+# ── Sell — climax top (extension + momentum break within a window) ───────────
+EXT10_PCT           = 5.0   # % above 10-day MA that counts as "extended"
+CLIMAX_VOTE_WINDOW  = 10    # days within which both climax signals must fire
+
+# ── Sell — trailing stop ──────────────────────────────────────────────────────
+TRAILING_STOP_PCT = 25.0    # % below the high since entry
 
 # ── Shared ────────────────────────────────────────────────────────────────────
 INITIAL_CAPITAL = 10_000.0
 COMMISSION      = 1.0
 SLIPPAGE        = 0.0005
+COOLDOWN_DAYS   = 15     # calendar days to wait after a sell before the next buy
 
 
 def _parse_price(s: pd.Series) -> pd.Series:
     return s.astype(str).str.replace(",", "").astype(float)
+
+
+def _load_breadth() -> pd.DataFrame:
+    """Prefer the continuous daily series (breadth_daily.csv, 2002+); S5TH.csv
+    alone is bimonthly before 2007, which corrupts row-based windows."""
+    if BREADTH_DAILY_FILE.exists():
+        b200 = pd.read_csv(BREADTH_DAILY_FILE)
+        b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
+        b200.set_index("Date", inplace=True)
+        return b200.rename(columns={"breadth": "Price"})
+    # S5TH uses Investing.com format: Date (MM/DD/YYYY), Price
+    b200 = pd.read_csv(BREADTH_FILE)
+    b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
+    b200.set_index("Date", inplace=True)
+    b200["Price"] = _parse_price(b200["Price"])
+    # S5TH is bimonthly before 2007 — drop the sparse era
+    return b200[b200.index >= BREADTH_DAILY_MIN]
 
 
 def load_data() -> pd.DataFrame:
@@ -41,21 +83,38 @@ def load_data() -> pd.DataFrame:
     soxx = soxx.rename(columns={"Price": "price"})
     soxx["price"] = _parse_price(soxx["price"])
 
-    # S5TH uses Investing.com format: Date (MM/DD/YYYY), Price
-    b200 = pd.read_csv(BREADTH_FILE)
-    b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
-    b200.set_index("Date", inplace=True)
-    b200["Price"] = _parse_price(b200["Price"])
-    b200 = b200.rename(columns={"Price": "breadth"})
+    b200 = _load_breadth().rename(columns={"Price": "breadth"})
 
     merged = soxx[["price"]].join(b200[["breadth"]], how="left")
     merged.sort_index(inplace=True)
     merged = merged[merged["breadth"].notna()]
 
+    vix = pd.read_csv(VIX_FILE)
+    vix.columns = [c.strip().strip('"').lstrip("﻿") for c in vix.columns]
+    vix["Date"] = pd.to_datetime(vix["Date"], format="%m/%d/%Y")
+    vix.set_index("Date", inplace=True)
+    merged = merged.join(_parse_price(vix["Price"]).rename("vix"), how="left")
+    merged["vix"] = merged["vix"].ffill()
+
+    merged["ma200"] = merged["price"].rolling(MA200_WINDOW).mean()
+
+    # Vote gate: at least 1 of [VIX > 30, price > MA200]; NaN → True
+    merged["vix_vote"]   = merged["vix"].isna() | (merged["vix"] > VIX_BUY_THRESH)
+    merged["ma200_vote"] = merged["ma200"].isna() | (merged["price"] > merged["ma200"])
+    merged["vote_gate"]  = merged["vix_vote"] | merged["ma200_vote"]
+
     pp = merged["price"].shift(DIVERGENCE_WINDOW)
     bp = merged["breadth"].shift(DIVERGENCE_WINDOW)
     merged["price_rose"]   = ((merged["price"] - pp) / pp * 100 >= DIVERGENCE_PRICE_RISE).fillna(False)
     merged["breadth_fell"] = ((bp - merged["breadth"]) >= DIVERGENCE_BREADTH_FALL).fillna(False)
+
+    # Climax-top components (exit fires only when both occur post-entry,
+    # within CLIMAX_VOTE_WINDOW days — tracked in run_strategy)
+    close = merged["price"]
+    macd = close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
+    hist = macd - macd.ewm(span=9, adjust=False).mean()
+    merged["macd_cross"] = ((hist < 0) & (hist.shift(1) >= 0)).fillna(False)
+    merged["ext10"] = (close / close.rolling(10).mean() - 1 >= EXT10_PCT / 100).fillna(False)
 
     return merged
 
@@ -76,8 +135,10 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
     position   = "OUT"
     eff_entry  = raw_entry = 0.0
     entry_date = None
-    trade_low  = 0.0
+    trade_low  = trade_high = 0.0
+    macd_age   = ext_age = 10**9
     portfolio  = INITIAL_CAPITAL
+    cooldown_until: pd.Timestamp | None = None
     trades: list[dict] = []
     values: dict = {}
 
@@ -88,23 +149,42 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
         breadth_fell = bool(row["breadth_fell"])
 
         if position == "OUT":
-            if not pd.isna(breadth) and breadth < BUY_B200_THRESH:
+            cooldown_ok = cooldown_until is None or date > cooldown_until
+            if (not pd.isna(breadth) and breadth < BUY_B200_THRESH
+                    and bool(row["vote_gate"]) and cooldown_ok):
                 portfolio -= COMMISSION
                 eff_entry  = price * (1 + SLIPPAGE)
                 raw_entry  = price
                 entry_date = date
                 trade_low  = price
+                trade_high = price
+                # climax signal ages (days since firing AFTER entry); start "stale"
+                macd_age = ext_age = 10**9
                 position   = "IN"
 
         elif position == "IN":
-            trade_low   = min(trade_low, price)
+            trade_low  = min(trade_low, price)
+            trade_high = max(trade_high, price)
+            macd_age = 0 if bool(row["macd_cross"]) else macd_age + 1
+            ext_age  = 0 if bool(row["ext10"])      else ext_age + 1
             bearish_div = price_rose and breadth_fell and breadth < DIVERGENCE_BREADTH_CAP
-
+            climax      = (macd_age < CLIMAX_VOTE_WINDOW) and (ext_age < CLIMAX_VOTE_WINDOW)
+            trail_hit   = price <= trade_high * (1 - TRAILING_STOP_PCT / 100)
             if bearish_div:
+                sell_reason = "bearish-divergence"
+            elif climax:
+                sell_reason = "climax-top"
+            elif trail_hit:
+                sell_reason = "trailing-stop"
+            else:
+                sell_reason = None
+
+            if sell_reason:
                 eff_exit  = price * (1 - SLIPPAGE)
                 gross_ret = (eff_exit - eff_entry) / eff_entry
                 portfolio *= (1 + gross_ret)
                 portfolio -= COMMISSION
+                cooldown_until = date + pd.Timedelta(days=COOLDOWN_DAYS)
                 trades.append({
                     "entry_date":       entry_date,
                     "exit_date":        date,
@@ -113,7 +193,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                     "return_pct":       gross_ret * 100,
                     "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
                     "accumulated":      portfolio,
-                    "sell_reason":      "bearish-divergence",
+                    "sell_reason":      sell_reason,
                 })
                 position = "OUT"
 
@@ -346,6 +426,9 @@ def main() -> None:
     df = load_data()
     print(f"Date range  : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
     print(f"Buy signal  : breadth200 < {BUY_B200_THRESH}%")
+    print(f"Vote gate   : VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW}  (≥1 of 2 must agree)")
+    print(f"Extra exits : climax top (≥{EXT10_PCT:.0f}% above 10d MA + MACD cross within "
+          f"{CLIMAX_VOTE_WINDOW}d) OR trailing stop ({TRAILING_STOP_PCT:.0f}%)")
     print(f"Sell signal : price rose ≥{DIVERGENCE_PRICE_RISE}% AND breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts")
     print(f"              over {DIVERGENCE_WINDOW} days, while breadth200 < {DIVERGENCE_BREADTH_CAP}%")
     print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")

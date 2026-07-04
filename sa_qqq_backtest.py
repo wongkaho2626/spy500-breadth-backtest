@@ -60,6 +60,23 @@ def _parse_price(s: pd.Series) -> pd.Series:
     return s.astype(str).str.replace(",", "").astype(float)
 
 
+def _load_breadth() -> pd.DataFrame:
+    """Prefer the continuous daily series (breadth_daily.csv, 2002+); S5TH.csv
+    alone is bimonthly before 2007, which corrupts row-based windows."""
+    daily = DATA_DIR / "breadth_daily.csv"
+    if daily.exists():
+        b200 = pd.read_csv(daily)
+        b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
+        b200.set_index("Date", inplace=True)
+        return b200
+    b200 = pd.read_csv(DATA_DIR / "S5TH.csv")
+    b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
+    b200.set_index("Date", inplace=True)
+    b200["breadth"] = _parse_price(b200["Price"])
+    # S5TH is bimonthly before 2007 — drop the sparse era
+    return b200[b200.index >= "2007-01-01"]
+
+
 def _rsi(series: pd.Series, window: int = 14) -> pd.Series:
     delta = series.diff()
     gain  = delta.clip(lower=0).rolling(window).mean()
@@ -74,10 +91,7 @@ def load_market_data() -> pd.DataFrame:
     ndx.set_index("Date", inplace=True)
     ndx["price"] = _parse_price(ndx["Price"])
 
-    b200 = pd.read_csv(DATA_DIR / "S5TH.csv")
-    b200["Date"] = pd.to_datetime(b200["Date"], format="%m/%d/%Y")
-    b200.set_index("Date", inplace=True)
-    b200["breadth"] = _parse_price(b200["Price"])
+    b200 = _load_breadth()
 
     vix = pd.read_csv(DATA_DIR / "VIX.csv")
     vix.columns = [c.strip().strip('"').lstrip("﻿") for c in vix.columns]
