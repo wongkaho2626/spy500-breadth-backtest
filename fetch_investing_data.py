@@ -192,6 +192,12 @@ def _fetch_instrument(page, instrument: dict, verbose: bool) -> int:
     else:
         combined = new_df
 
+    # Guard against duplicate dates: if a fetch re-returns the latest row (the
+    # cutoff comparison can be off by a day), concat would append a duplicate,
+    # and duplicate Date labels break reindex/.loc in every downstream backtest.
+    # new_df is first, so keep="first" retains the freshly fetched row.
+    combined = combined.drop_duplicates(subset="Date", keep="first")
+
     combined.to_csv(csv_file, index=False, quoting=1, encoding="utf-8-sig")
     if verbose:
         print(f"  {name}: added {len(new_rows)} new row(s)")
