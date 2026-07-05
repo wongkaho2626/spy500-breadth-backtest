@@ -73,6 +73,14 @@ CLIMAX_VOTE_WINDOW  = 10    # days within which both climax signals must fire
 # ── Sell — trailing stop (on NDX, the signal index) ──────────────────────────
 TRAILING_STOP_PCT = 25.0    # % below the NDX high since entry
 
+# ── Execution timing ──────────────────────────────────────────────────────────
+# Signals come from end-of-day NDX closes, so the earliest tradeable fill is the
+# NEXT session. Default: a signal on day t fills at day t+1's OPEN of every leg.
+# Set EXECUTION_LAG=0 and FILL_PRICE="close" for the legacy same-day-close
+# (look-ahead) fill that trades at the very close that produced the signal.
+EXECUTION_LAG = 1        # bars between signal and fill (0 = same day, look-ahead)
+FILL_PRICE    = "open"   # "open" or "close" of the fill bar
+
 # ── Shared ────────────────────────────────────────────────────────────────────
 INITIAL_CAPITAL      = 10_000.0
 COMMISSION           = 1.0
@@ -154,7 +162,7 @@ def load_top_holdings() -> dict[int, str]:
     return result
 
 
-def _load_stock_series(ticker: str) -> pd.Series | None:
+def _load_stock_series(ticker: str, col: str = "Close") -> pd.Series | None:
     path = STOCK_PRICE_DIR / f"{ticker}.csv"
     if not path.exists():
         return None
@@ -165,23 +173,24 @@ def _load_stock_series(ticker: str) -> pd.Series | None:
                   .dt.tz_localize(None))
     df.set_index("Date", inplace=True)
     df.sort_index(inplace=True)
-    return df["Close"].rename(ticker).astype(float)
+    use = col if col in df.columns else "Close"
+    return df[use].rename(ticker).astype(float)
 
 
-def _load_etf(ticker: str, start: str = "1993-01-01") -> pd.Series | None:
+def _load_etf(ticker: str, start: str = "1993-01-01", col: str = "Close") -> pd.Series | None:
     if not _HAS_YF:
         print(f"[yfinance not installed -- {ticker} weight will be merged into QQQ]")
         return None
     try:
         print(f"Fetching {ticker} from yfinance...")
         raw = yf.download(ticker, start=start, progress=False)
-        close = raw["Close"] if "Close" in raw.columns else raw.iloc[:, 0]
-        if isinstance(close, pd.DataFrame):
-            close = close.iloc[:, 0]
-        close = close.rename(ticker).astype(float)
-        close.index = pd.to_datetime(close.index)
-        close.index.name = "Date"
-        return close
+        series = raw[col] if col in raw.columns else raw.iloc[:, 0]
+        if isinstance(series, pd.DataFrame):
+            series = series.iloc[:, 0]
+        series = series.rename(ticker).astype(float)
+        series.index = pd.to_datetime(series.index)
+        series.index.name = "Date"
+        return series
     except Exception as exc:
         print(f"[{ticker} fetch failed: {exc} -- weight merged into QQQ]")
         return None
@@ -202,8 +211,9 @@ def load_data() -> tuple[pd.DataFrame, dict[int, str], dict[str, pd.Series], pd.
     ndx = pd.read_csv(NDX_FILE)
     ndx["Date"] = pd.to_datetime(ndx["Date"], format="%m/%d/%Y")
     ndx.set_index("Date", inplace=True)
-    ndx = ndx.rename(columns={"Price": "price"})
+    ndx = ndx.rename(columns={"Price": "price", "Open": "open"})
     ndx["price"] = _parse_price(ndx["price"])
+    ndx["open"]  = _parse_price(ndx["open"])
 
     b200 = _load_breadth()
 
@@ -213,7 +223,7 @@ def load_data() -> tuple[pd.DataFrame, dict[int, str], dict[str, pd.Series], pd.
     vix.set_index("Date", inplace=True)
     vix["vix"] = _parse_price(vix["Price"])
 
-    merged = ndx[["price"]].join(
+    merged = ndx[["price", "open"]].join(
         b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"
     )
     merged = merged.join(vix[["vix"]], how="left")
@@ -268,6 +278,26 @@ def load_data() -> tuple[pd.DataFrame, dict[int, str], dict[str, pd.Series], pd.
     aligned_soxx = _align(_load_etf("SOXX", start="2001-07-01"))
 
     return merged, top_holdings, aligned_stocks, aligned_tqqq, aligned_spy, aligned_soxx
+
+
+def load_open_series(
+    top_holdings: dict[int, str],
+    index: pd.Index,
+) -> tuple[dict[str, pd.Series], pd.Series | None, pd.Series | None, pd.Series | None]:
+    """Open-price counterparts of the aligned Close series returned by load_data(),
+    used to fill next-day-open orders. NDX's own open lives in df["open"]."""
+    def _align(raw: pd.Series | None) -> pd.Series | None:
+        return raw.reindex(index).ffill() if raw is not None else None
+
+    stocks_open: dict[str, pd.Series] = {}
+    for ticker in sorted(set(top_holdings.values())):
+        s = _load_stock_series(ticker, col="Open")
+        if s is not None:
+            stocks_open[ticker] = s.reindex(index).ffill()
+    tqqq_open = _align(_load_etf("TQQQ", start="2010-01-01", col="Open"))
+    spy_open  = _align(_load_etf("SPY",  start="1993-01-01", col="Open"))
+    soxx_open = _align(_load_etf("SOXX", start="2001-07-01", col="Open"))
+    return stocks_open, tqqq_open, spy_open, soxx_open
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -356,7 +386,22 @@ def run_strategy(
     yearly_contribution: float = 0.0,
     force_entry_on_start: bool = False,
     force_ticker: str | None = None,
+    execution_lag: int = EXECUTION_LAG,
+    fill_on: str = FILL_PRICE,
+    aligned_stocks_open: dict[str, pd.Series] | None = None,
+    aligned_tqqq_open: pd.Series | None = None,
+    aligned_spy_open:  pd.Series | None = None,
+    aligned_soxx_open: pd.Series | None = None,
 ) -> tuple[pd.Series, list[dict], dict | None, float]:
+    """Signals are computed on the NDX close; a signal on day t fills
+    `execution_lag` bars later at that bar's open (fill_on="open", the default and
+    realistic choice) or close. lag=0 requires fill_on="close" — the legacy
+    same-day look-ahead fill. Mark-to-market always uses closes. When an asset's
+    open series isn't supplied, that leg falls back to the fill-bar close."""
+    if fill_on == "open" and execution_lag < 1:
+        raise ValueError("fill_on='open' requires execution_lag >= 1 (open precedes close)")
+    aligned_stocks_open = aligned_stocks_open or {}
+
     position       = "OUT"
     portfolio      = initial_capital
     cooldown_until: pd.Timestamp | None = None
@@ -397,7 +442,33 @@ def run_strategy(
     prev_month: int | None = None
     prev_year:  int | None = None
 
-    for date, row in df.iterrows():
+    # ── Execution lag via signal shift ───────────────────────────────────────
+    # Decisions read data from `execution_lag` bars ago (what was actually known
+    # at that close); the fill then happens on the current bar. lag=0 is the
+    # identity shift, so with fill_on="close" this reproduces the legacy same-day
+    # look-ahead exactly. All *_sig arrays are positional (indexed by i).
+    lag = execution_lag
+    _b   = df["breadth"].shift(lag).to_numpy()
+    _ndx = df["price"].shift(lag).to_numpy()          # NDX close as of the signal bar
+    _vg  = df["vote_gate"].shift(lag).fillna(False).to_numpy()
+    _vv  = df["vix_vote"].shift(lag).fillna(False).to_numpy()
+    _mv  = df["ma200_vote"].shift(lag).fillna(False).to_numpy()
+    _pr  = df["price_rose"].shift(lag).fillna(False).to_numpy()
+    _bf  = df["breadth_fell"].shift(lag).fillna(False).to_numpy()
+    _rc  = df["ma200_recross"].shift(lag).fillna(False).to_numpy()
+    _mc  = df["macd_cross"].shift(lag).fillna(False).to_numpy()
+    _ex  = df["ext10"].shift(lag).fillna(False).to_numpy()
+    _open = df["open"].to_numpy() if "open" in df.columns else df["price"].to_numpy()
+
+    def _fillpx(close_s, open_s, date):
+        """Fill price for one leg: the fill-bar open when available, else close."""
+        if fill_on == "open" and open_s is not None:
+            v = _safe(open_s, date)
+            if not pd.isna(v):
+                return v
+        return _safe(close_s, date)
+
+    for i, (date, row) in enumerate(df.iterrows()):
         # ── Periodic contributions (skip the very first row) ──────────────────
         if prev_month is not None:
             contrib = 0.0
@@ -411,10 +482,12 @@ def run_strategy(
         prev_month = date.month
         prev_year  = date.year
 
-        ndx_price    = float(row["price"])
-        breadth      = row["breadth"]
-        price_rose   = bool(row["price_rose"])
-        breadth_fell = bool(row["breadth_fell"])
+        ndx_price    = float(row["price"])       # today's NDX close (fill legacy + MTM)
+        ndx_fill     = float(_open[i]) if (fill_on == "open" and not pd.isna(_open[i])) else ndx_price
+        ndx_sig      = float(_ndx[i]) if not pd.isna(_ndx[i]) else ndx_price   # signal-bar NDX
+        breadth      = _b[i]                      # signal-bar breadth (may be NaN early)
+        price_rose   = bool(_pr[i])
+        breadth_fell = bool(_bf[i])
 
         if position == "OUT":
             if force_buy_pending:
@@ -423,7 +496,7 @@ def run_strategy(
                 stock_ticker         = pending_force_ticker
                 pending_force_ticker = None
             else:
-                vote_gate   = bool(row["vote_gate"])
+                vote_gate   = bool(_vg[i])
                 cooldown_ok = cooldown_until is None or date > cooldown_until
                 washout_buy = (
                     not pd.isna(breadth)
@@ -433,18 +506,19 @@ def run_strategy(
                 # Trend re-entry on a fresh MA200 recross (NDX): rejoin when the
                 # last exit was a climax-top or NDX is back above the prior exit.
                 recross_ok  = last_sell_reason == "climax-top" or (
-                    last_exit_price is not None and ndx_price > last_exit_price)
-                trend_buy   = bool(row["ma200_recross"]) and recross_ok
+                    last_exit_price is not None and ndx_sig > last_exit_price)
+                trend_buy   = bool(_rc[i]) and recross_ok
                 do_buy = cooldown_ok and (washout_buy or trend_buy)
                 if do_buy:
                     year         = date.year
                     stock_ticker = top_holdings.get(year) or top_holdings.get(year - 1)
 
             if do_buy:
-                stock_px = _safe(aligned_stocks.get(stock_ticker) if stock_ticker else None, date)
-                tqqq_px  = _safe(aligned_tqqq,  date)
-                spy_px   = _safe(aligned_spy,   date)
-                soxx_px  = _safe(aligned_soxx,  date)
+                stock_px = _fillpx(aligned_stocks.get(stock_ticker) if stock_ticker else None,
+                                   aligned_stocks_open.get(stock_ticker) if stock_ticker else None, date)
+                tqqq_px  = _fillpx(aligned_tqqq, aligned_tqqq_open, date)
+                spy_px   = _fillpx(aligned_spy,  aligned_spy_open,  date)
+                soxx_px  = _fillpx(aligned_soxx, aligned_soxx_open, date)
 
                 # Sweep accumulated contributions into buckets before buying
                 if cash_reserve > 0:
@@ -491,7 +565,7 @@ def run_strategy(
                     qqq_qqq_frac = 1.0
                     stock_qqq_frac = tqqq_qqq_frac = spy_qqq_frac = soxx_qqq_frac = 0.0
 
-                qqq_entry_px   = ndx_price * (1 + SLIPPAGE)
+                qqq_entry_px   = ndx_fill  * (1 + SLIPPAGE)
                 stock_entry_px = stock_px  * (1 + SLIPPAGE) if stock_active else 0.0
                 tqqq_entry_px  = tqqq_px   * (1 + SLIPPAGE) if tqqq_active  else 0.0
                 spy_entry_px   = spy_px    * (1 + SLIPPAGE) if spy_active   else 0.0
@@ -506,13 +580,13 @@ def run_strategy(
                 holding_ticker = stock_ticker
                 entry_date     = date
                 trade_low_val  = eff_qqq + eff_stock + eff_tqqq + eff_spy + eff_soxx
-                ndx_high       = ndx_price
+                ndx_high       = ndx_sig
                 macd_age = ext_age = 10**9   # climax signals must fire AFTER entry
                 position       = "IN"
                 buy_trigger    = (
-                    ("VIX" if row["vix_vote"] else "")
-                    + ("+" if row["vix_vote"] and row["ma200_vote"] else "")
-                    + ("MA200" if row["ma200_vote"] else "")
+                    ("VIX" if _vv[i] else "")
+                    + ("+" if _vv[i] and _mv[i] else "")
+                    + ("MA200" if _mv[i] else "")
                 )
                 # Bucket-level entry/peak/low values
                 qqq_entry_val  = qqq_bucket;  qqq_peak_val  = qqq_bucket;  qqq_low_val  = qqq_bucket
@@ -522,12 +596,12 @@ def run_strategy(
                 soxx_entry_val = soxx_bucket; soxx_peak_val = soxx_bucket; soxx_low_val = soxx_bucket
 
         elif position == "IN":
-            ndx_high = max(ndx_high, ndx_price)
-            macd_age = 0 if bool(row["macd_cross"]) else macd_age + 1
-            ext_age  = 0 if bool(row["ext10"])      else ext_age + 1
+            ndx_high = max(ndx_high, ndx_sig)
+            macd_age = 0 if bool(_mc[i]) else macd_age + 1
+            ext_age  = 0 if bool(_ex[i]) else ext_age + 1
             bearish_div = price_rose and breadth_fell and breadth < DIVERGENCE_BREADTH_CAP
             climax      = (macd_age < CLIMAX_VOTE_WINDOW) and (ext_age < CLIMAX_VOTE_WINDOW)
-            trail_hit   = ndx_price <= ndx_high * (1 - TRAILING_STOP_PCT / 100)
+            trail_hit   = ndx_sig <= ndx_high * (1 - TRAILING_STOP_PCT / 100)
             if bearish_div:
                 sell_reason = "bearish-divergence"
             elif climax:
@@ -538,17 +612,18 @@ def run_strategy(
                 sell_reason = None
 
             if sell_reason:
-                stock_px_exit = _safe(aligned_stocks.get(holding_ticker) if holding_ticker else None, date)
-                tqqq_px_exit  = _safe(aligned_tqqq,  date)
-                spy_px_exit   = _safe(aligned_spy,   date)
-                soxx_px_exit  = _safe(aligned_soxx,  date)
+                stock_px_exit = _fillpx(aligned_stocks.get(holding_ticker) if holding_ticker else None,
+                                        aligned_stocks_open.get(holding_ticker) if holding_ticker else None, date)
+                tqqq_px_exit  = _fillpx(aligned_tqqq, aligned_tqqq_open, date)
+                spy_px_exit   = _fillpx(aligned_spy,  aligned_spy_open,  date)
+                soxx_px_exit  = _fillpx(aligned_soxx, aligned_soxx_open, date)
 
                 spx  = stock_px_exit if not pd.isna(stock_px_exit) else 0.0
                 tpx  = tqqq_px_exit  if not pd.isna(tqqq_px_exit)  else 0.0
                 spyx = spy_px_exit   if not pd.isna(spy_px_exit)   else 0.0
                 sxx  = soxx_px_exit  if not pd.isna(soxx_px_exit)  else 0.0
 
-                gross_qqq   = qqq_shares   * ndx_price * (1 - SLIPPAGE)
+                gross_qqq   = qqq_shares   * ndx_fill  * (1 - SLIPPAGE)
                 gross_stock = stock_shares * spx        * (1 - SLIPPAGE)
                 gross_tqqq  = tqqq_shares  * tpx        * (1 - SLIPPAGE)
                 gross_spy   = spy_shares   * spyx       * (1 - SLIPPAGE)
@@ -575,7 +650,7 @@ def run_strategy(
                 portfolio      = total_proc
                 cooldown_until = date + pd.Timedelta(days=cooldown_days)
                 last_sell_reason = sell_reason
-                last_exit_price = ndx_price
+                last_exit_price = ndx_fill
 
                 def _mdd(low: float, peak: float) -> float:
                     return (low - peak) / peak * 100 if peak > 0 else 0.0
@@ -591,7 +666,7 @@ def run_strategy(
                     "top1_ticker":      holding_ticker,
                     "cooldown_until":   cooldown_until,
                     "qqq_entry_px":    qqq_entry_px / (1 + SLIPPAGE),
-                    "qqq_exit_px":     ndx_price,
+                    "qqq_exit_px":     ndx_fill,
                     "qqq_entry_val":   qqq_entry_val,
                     "qqq_exit_val":    qqq_exit_val,
                     "qqq_peak_val":    qqq_peak_val,
@@ -1132,7 +1207,19 @@ def main() -> None:
                         metavar="AMOUNT",
                         help="Cash added every year in dollars (default: %(default)s). "
                              "Contributions accumulate and are deployed at the next buy signal.")
+    parser.add_argument("--fill", choices=["next-open", "next-close", "same-close"],
+                        default=None,
+                        help="Execution model: next-open (default, realistic), next-close, "
+                             "or same-close (legacy same-day look-ahead fill)")
     args = parser.parse_args()
+
+    fill_lag, fill_on = EXECUTION_LAG, FILL_PRICE
+    if args.fill == "next-open":
+        fill_lag, fill_on = 1, "open"
+    elif args.fill == "next-close":
+        fill_lag, fill_on = 1, "close"
+    elif args.fill == "same-close":
+        fill_lag, fill_on = 0, "close"
 
     # If any weight flag was explicitly given, unspecified ones default to 0.
     # If none were given at all, fall back to module-level defaults.
@@ -1161,6 +1248,7 @@ def main() -> None:
 
     print("Loading data...")
     df, top_holdings, aligned_stocks, aligned_tqqq, aligned_spy, aligned_soxx = load_data()
+    stocks_open, tqqq_open, spy_open, soxx_open = load_open_series(top_holdings, df.index)
 
     # Parse and validate date range
     start_date = pd.Timestamp(args.start_date) if args.start_date else None
@@ -1240,6 +1328,12 @@ def main() -> None:
         yearly_contribution=args.yearly_contribution,
         force_entry_on_start=force_entry_on_start,
         force_ticker=force_ticker,
+        execution_lag=fill_lag,
+        fill_on=fill_on,
+        aligned_stocks_open=stocks_open,
+        aligned_tqqq_open=tqqq_open,
+        aligned_spy_open=spy_open,
+        aligned_soxx_open=soxx_open,
     )
 
     print_metrics(
