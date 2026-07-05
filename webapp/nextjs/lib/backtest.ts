@@ -15,9 +15,23 @@ export const TRAILING_STOP_PCT  = 25.0
 export const COMMISSION = 1.0
 export const SLIPPAGE   = 0.0005
 
+// ── Execution timing ─────────────────────────────────────────────────────────
+// Signals come from end-of-day NDX closes, so the earliest tradeable fill is the
+// NEXT session. Default: a signal on day t fills at day t+1's OPEN of each leg.
+// 'same-close' (lag 0, close) is the legacy same-day look-ahead fill and
+// reproduces the prior numbers exactly; it stays available as a toggle.
+export type FillMode = 'next-open' | 'next-close' | 'same-close'
+export const DEFAULT_FILL_MODE: FillMode = 'next-open'
+export function fillModeToParams(mode: FillMode): { lag: number; fillOn: 'open' | 'close' } {
+  if (mode === 'next-open')  return { lag: 1, fillOn: 'open' }
+  if (mode === 'next-close') return { lag: 1, fillOn: 'close' }
+  return { lag: 0, fillOn: 'close' }  // same-close (legacy look-ahead)
+}
+
 export interface DayData {
   date: string        // ISO YYYY-MM-DD
-  price: number       // NDX price
+  price: number       // NDX close
+  open: number        // NDX open (fill price when execution lags to the next bar)
   breadth: number     // % above 200-day MA
   vix: number
   ma200: number | null
@@ -39,6 +53,7 @@ export interface BacktestParams {
   cooldown_days: number
   start_date?: string | null
   end_date?: string | null
+  fill_mode?: FillMode   // execution model (default: next-open, the realistic fill)
 }
 
 export interface Trade {
@@ -106,20 +121,23 @@ export function prepareData(
   ndxPrices: [string, number][],  // [date, price] sorted ascending
   breadthPrices: [string, number][],
   vixPrices: [string, number][],
+  ndxOpens: [string, number][] = [],  // [date, open] — NDX open for next-day-open fills
 ): DayData[] {
   // Build maps for fast lookup
   const breadthMap = new Map(breadthPrices)
   const vixMap = new Map(vixPrices)
+  const openMap = new Map(ndxOpens)
 
   // First pass: collect rows with breadth
-  const raw: { date: string; price: number; breadth: number; vix: number }[] = []
+  const raw: { date: string; price: number; open: number; breadth: number; vix: number }[] = []
   const prices: number[] = []
 
   for (const [date, price] of ndxPrices) {
     const breadth = breadthMap.get(date)
     if (breadth === undefined) continue
     const vix = vixMap.get(date) ?? NaN
-    raw.push({ date, price, breadth, vix })
+    const open = openMap.get(date) ?? price   // fall back to close if open missing
+    raw.push({ date, price, open, breadth, vix })
     prices.push(price)
   }
 
@@ -183,7 +201,7 @@ export function prepareData(
       breadth_fell = bf >= DIVERGENCE_BREADTH_FALL
     }
 
-    rows.push({ date: r.date, price: r.price, breadth: r.breadth, vix: r.vix,
+    rows.push({ date: r.date, price: r.price, open: r.open, breadth: r.breadth, vix: r.vix,
       ma200: ma, vix_vote, ma200_vote, vote_gate, price_rose, breadth_fell,
       macd_cross: macdCross[i], ext10: ext10Arr[i], ma200_recross: ma200Recross[i] })
   }
@@ -250,7 +268,21 @@ export function runStrategy(
   params: BacktestParams,
   wQQQ: number, wStock: number, wTQQQ: number, wSPY: number, wSOXX: number,
   forceEntryFirstDay = false,  // strategy was already IN before the window start
+  executionLag = 1,            // bars between signal and fill (0 = same-day look-ahead)
+  fillOn: 'open' | 'close' = 'open',
+  alignedStocksOpen: Map<string, Map<string, number>> = new Map(),
+  alignedTqqqOpen: Map<string, number> | null = null,
+  alignedSpyOpen: Map<string, number> | null = null,
+  alignedSoxxOpen: Map<string, number> | null = null,
 ): { portfolio: [string, number][]; trades: Trade[]; openTrade: Trade | null; totalContrib: number } {
+  // Fill price for one leg: the fill-bar open when available, else close.
+  const fillPx = (closeMap: Map<string, number> | null, openMap: Map<string, number> | null, date: string): number => {
+    if (fillOn === 'open' && openMap) {
+      const v = safe(openMap, date)
+      if (!isNaN(v)) return v
+    }
+    return safe(closeMap, date)
+  }
 
   let position: 'IN' | 'OUT' = 'OUT'
   let cooldownUntil: string | null = null
@@ -303,30 +335,37 @@ export function runStrategy(
     prevMonth = dateMonth; prevYear = dateYear
 
     const ndxPrice = row.price
-    const breadth  = row.breadth
+    // Signal bar: the close `executionLag` bars ago (what was actually known when
+    // the order was placed). lag=0 → today's row (legacy same-day look-ahead).
+    const sig = executionLag > 0
+      ? (idx - executionLag >= 0 ? data[idx - executionLag] : null)
+      : row
+    // Fill price for the NDX/QQQ leg on this bar (open, else close).
+    const ndxFill = (fillOn === 'open' && !isNaN(row.open)) ? row.open : ndxPrice
 
     if (position === 'OUT') {
       // Determine if cooldown has passed
       const cooldownOk = cooldownUntil === null || date > cooldownUntil
       const carryIn = forceEntryFirstDay && idx === 0
-      const washoutBuy = !isNaN(breadth) && breadth < BUY_B200_THRESH && row.vote_gate
+      const washoutBuy = !!sig && !isNaN(sig.breadth) && sig.breadth < BUY_B200_THRESH && sig.vote_gate
       // Trend re-entry on a fresh MA200 recross (NDX): rejoin when the last exit
       // was a climax-top or the NDX price is back above the price we last sold at
       // (market proved the exit premature). Recrosses still below the prior exit
       // stay filtered as failed bounces in a real downtrend.
       const recrossOk = lastSellReason === 'climax-top'
-        || (lastExitPrice !== null && ndxPrice > lastExitPrice)
-      const trendBuy  = row.ma200_recross && recrossOk
-      const doBuy = carryIn || (cooldownOk && (washoutBuy || trendBuy))
+        || (lastExitPrice !== null && !!sig && sig.price > lastExitPrice)
+      const trendBuy  = !!sig && sig.ma200_recross && recrossOk
+      const doBuy = carryIn || (!!sig && cooldownOk && (washoutBuy || trendBuy))
 
       if (doBuy) {
         const year = dateYear
         const stockTicker = topHoldings.get(year) ?? topHoldings.get(year - 1) ?? null
 
-        const stockPx = safe(stockTicker ? (alignedStocks.get(stockTicker) ?? null) : null, date)
-        const tqqqPx  = safe(alignedTqqq, date)
-        const spyPx   = safe(alignedSpy,  date)
-        const soxxPx  = safe(alignedSoxx, date)
+        const stockPx = fillPx(stockTicker ? (alignedStocks.get(stockTicker) ?? null) : null,
+                               stockTicker ? (alignedStocksOpen.get(stockTicker) ?? null) : null, date)
+        const tqqqPx  = fillPx(alignedTqqq, alignedTqqqOpen, date)
+        const spyPx   = fillPx(alignedSpy,  alignedSpyOpen,  date)
+        const soxxPx  = fillPx(alignedSoxx, alignedSoxxOpen, date)
 
         // Sweep cash into buckets
         if (cashReserve > 0) {
@@ -365,7 +404,7 @@ export function runStrategy(
           qqqQqqFrac = 1; stockQqqFrac = tqqqQqqFrac = spyQqqFrac = soxxQqqFrac = 0
         }
 
-        const qqqEntryPx   = ndxPrice * (1 + SLIPPAGE)
+        const qqqEntryPx   = ndxFill * (1 + SLIPPAGE)
         const stockEntryPx = stockActive ? stockPx * (1 + SLIPPAGE) : 0
         const tqqqEntryPx  = tqqqActive  ? tqqqPx  * (1 + SLIPPAGE) : 0
         const spyEntryPx   = spyActive   ? spyPx   * (1 + SLIPPAGE) : 0
@@ -380,42 +419,45 @@ export function runStrategy(
         holdingTicker = stockTicker
         entryDate     = date
         tradeLowVal   = effQQQ + effStock + effTQQQ + effSPY + effSOXX
-        ndxHigh       = ndxPrice
+        ndxHigh       = sig ? sig.price : ndxPrice
         macdAge       = Number.MAX_SAFE_INTEGER
         extAge        = Number.MAX_SAFE_INTEGER
         position      = 'IN'
-        buyTrigger    = carryIn
+        buyTrigger    = (carryIn || !sig)
           ? 'carry-in'
-          : (row.vix_vote ? 'VIX' : '') + (row.vix_vote && row.ma200_vote ? '+' : '') + (row.ma200_vote ? 'MA200' : '')
+          : (sig.vix_vote ? 'VIX' : '') + (sig.vix_vote && sig.ma200_vote ? '+' : '') + (sig.ma200_vote ? 'MA200' : '')
 
         qqqEntryVal  = qqqBucket;   stockEntryVal = stockBucket
         tqqqEntryVal = tqqqBucket;  spyEntryVal   = spyBucket;   soxxEntryVal = soxxBucket
       }
 
     } else { // IN
-      ndxHigh = Math.max(ndxHigh, ndxPrice)
-      macdAge = row.macd_cross ? 0 : macdAge + 1
-      extAge  = row.ext10      ? 0 : extAge + 1
-      const bearishDiv = row.price_rose && row.breadth_fell && breadth < DIVERGENCE_BREADTH_CAP
+      // Exit signals track the signal series (close as of `executionLag` bars ago).
+      ndxHigh = Math.max(ndxHigh, sig ? sig.price : ndxPrice)
+      macdAge = sig ? (sig.macd_cross ? 0 : macdAge + 1) : macdAge + 1
+      extAge  = sig ? (sig.ext10      ? 0 : extAge + 1)  : extAge + 1
+      const sigNdx = sig ? sig.price : ndxPrice
+      const bearishDiv = !!sig && sig.price_rose && sig.breadth_fell && sig.breadth < DIVERGENCE_BREADTH_CAP
       const climax     = macdAge < CLIMAX_VOTE_WINDOW && extAge < CLIMAX_VOTE_WINDOW
-      const trailHit   = ndxPrice <= ndxHigh * (1 - TRAILING_STOP_PCT / 100)
+      const trailHit   = sigNdx <= ndxHigh * (1 - TRAILING_STOP_PCT / 100)
       const sellReason = bearishDiv ? 'bearish-divergence'
         : climax ? 'climax-top'
         : trailHit ? 'trailing-stop'
         : null
 
       if (sellReason) {
-        const stockPxExit = safe(holdingTicker ? (alignedStocks.get(holdingTicker) ?? null) : null, date)
-        const tqqqPxExit  = safe(alignedTqqq, date)
-        const spyPxExit   = safe(alignedSpy,  date)
-        const soxxPxExit  = safe(alignedSoxx, date)
+        const stockPxExit = fillPx(holdingTicker ? (alignedStocks.get(holdingTicker) ?? null) : null,
+                                   holdingTicker ? (alignedStocksOpen.get(holdingTicker) ?? null) : null, date)
+        const tqqqPxExit  = fillPx(alignedTqqq, alignedTqqqOpen, date)
+        const spyPxExit   = fillPx(alignedSpy,  alignedSpyOpen,  date)
+        const soxxPxExit  = fillPx(alignedSoxx, alignedSoxxOpen, date)
 
         const spx  = !isNaN(stockPxExit) ? stockPxExit : 0
         const tpx  = !isNaN(tqqqPxExit)  ? tqqqPxExit  : 0
         const spyx = !isNaN(spyPxExit)   ? spyPxExit   : 0
         const sxx  = !isNaN(soxxPxExit)  ? soxxPxExit  : 0
 
-        const grossQQQ   = qqqShares   * ndxPrice * (1 - SLIPPAGE)
+        const grossQQQ   = qqqShares   * ndxFill  * (1 - SLIPPAGE)
         const grossStock = stockShares * spx        * (1 - SLIPPAGE)
         const grossTQQQ  = tqqqShares  * tpx        * (1 - SLIPPAGE)
         const grossSPY   = spyShares   * spyx       * (1 - SLIPPAGE)
@@ -441,7 +483,7 @@ export function runStrategy(
         cooldownDate.setDate(cooldownDate.getDate() + params.cooldown_days)
         cooldownUntil = cooldownDate.toISOString().slice(0, 10)
         lastSellReason = sellReason
-        lastExitPrice = ndxPrice
+        lastExitPrice = ndxFill
 
         trades.push({
           entry_date: entryDate!, exit_date: date,
@@ -595,6 +637,10 @@ export function runBacktest(
   alignedSpy: Map<string, number> | null,
   alignedSoxx: Map<string, number> | null,
   params: BacktestParams,
+  alignedStocksOpen: Map<string, Map<string, number>> = new Map(),
+  alignedTqqqOpen: Map<string, number> | null = null,
+  alignedSpyOpen: Map<string, number> | null = null,
+  alignedSoxxOpen: Map<string, number> | null = null,
 ): BacktestResult {
   const total = params.qqq + params.stock + params.tqqq + params.spy + params.soxx
   const wQQQ   = total > 0 ? params.qqq   / total : 0
@@ -624,10 +670,15 @@ export function runBacktest(
   }
   const slicedStocks = new Map<string, Map<string, number>>()
   for (const [t, m] of alignedStocks) slicedStocks.set(t, sliceMap(m)!)
+  const slicedStocksOpen = new Map<string, Map<string, number>>()
+  for (const [t, m] of alignedStocksOpen) slicedStocksOpen.set(t, sliceMap(m)!)
+
+  const { lag, fillOn } = fillModeToParams(params.fill_mode ?? DEFAULT_FILL_MODE)
 
   const { portfolio, trades, openTrade, totalContrib } = runStrategy(
     data, topHoldings, slicedStocks, sliceMap(alignedTqqq), sliceMap(alignedSpy), sliceMap(alignedSoxx),
     params, wQQQ, wStock, wTQQQ, wSPY, wSOXX, carryIn,
+    lag, fillOn, slicedStocksOpen, sliceMap(alignedTqqqOpen), sliceMap(alignedSpyOpen), sliceMap(alignedSoxxOpen),
   )
   const benchmark = runBenchmark(data, params.initial_capital)
 

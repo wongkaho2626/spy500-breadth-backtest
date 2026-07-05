@@ -44,6 +44,13 @@ export interface AppData {
   alignedTqqq: Map<string, number> | null
   alignedSpy: Map<string, number> | null
   alignedSoxx: Map<string, number> | null
+  // Open-price counterparts for next-day-open fills. NDX open lives in DayData.open.
+  // ETF CSVs (TQQQ/SPY/SOXX) ship close only, so their open maps are null and those
+  // legs fall back to the next-day close.
+  alignedStocksOpen: Map<string, Map<string, number>>
+  alignedTqqqOpen: Map<string, number> | null
+  alignedSpyOpen: Map<string, number> | null
+  alignedSoxxOpen: Map<string, number> | null
 }
 
 // Name->ticker mapping
@@ -101,6 +108,11 @@ export async function loadAppData(): Promise<AppData> {
     .map(r => [parseMMDDYYYY(r['Date']), parsePrice(r['Price'])] as [string, number])
     .filter(([, v]) => !isNaN(v))
     .sort((a, b) => a[0].localeCompare(b[0]))
+  // NDX open — fill price when execution lags to the next session
+  const ndxOpens: [string, number][] = ndxRows
+    .map(r => [parseMMDDYYYY(r['Date']), parsePrice(r['Open'])] as [string, number])
+    .filter(([, v]) => !isNaN(v))
+    .sort((a, b) => a[0].localeCompare(b[0]))
 
   // Parse breadth (% S&P 500 stocks above 200-day MA):
   // breadth_daily.csv has a "breadth" column; S5TH.csv has "Price"
@@ -120,7 +132,7 @@ export async function loadAppData(): Promise<AppData> {
     .sort((a, b) => a[0].localeCompare(b[0]))
 
   // Prepare main data
-  const data = prepareData(ndxPrices, breadthPrices, vixPrices)
+  const data = prepareData(ndxPrices, breadthPrices, vixPrices, ndxOpens)
 
   // Parse holdings -> top-1 per year
   const holdingsRows = parseCSV(holdingsText)
@@ -150,9 +162,25 @@ export async function loadAppData(): Promise<AppData> {
   let alignedTqqq: Map<string, number> | null = null
   let alignedSpy: Map<string, number> | null = null
   let alignedSoxx: Map<string, number> | null = null
+  // Open-price maps (only for legs whose CSV carries an Open column: NDX stocks).
+  const alignedStocksOpen = new Map<string, Map<string, number>>()
+  let alignedTqqqOpen: Map<string, number> | null = null
+  let alignedSpyOpen: Map<string, number> | null = null
+  let alignedSoxxOpen: Map<string, number> | null = null
 
   // All data dates for forward-fill alignment
   const allDates = data.map(r => r.date)
+
+  // Forward-fill a raw date->value map onto every data date.
+  const ffill = (rawMap: Map<string, number>): Map<string, number> => {
+    const filled = new Map<string, number>()
+    let last = NaN
+    for (const d of allDates) {
+      if (rawMap.has(d)) last = rawMap.get(d)!
+      if (!isNaN(last)) filled.set(d, last)
+    }
+    return filled
+  }
 
   for (const result of stockResults) {
     if (result.status !== 'fulfilled') {
@@ -167,30 +195,36 @@ export async function loadAppData(): Promise<AppData> {
       continue
     }
 
-    // Detect format: stock CSVs have 'Close' column; ETF CSVs (TQQQ/SPY/SOXX) have 'price' column
+    // Detect format: stock CSVs have 'Close'/'Open' columns; ETF CSVs (TQQQ/SPY/
+    // SOXX) ship a single lowercase 'price' column and no open.
     const priceCol = ('price' in rows[0]) ? 'price' : 'Close'
+    const hasOpen  = 'Open' in rows[0]
 
     const rawMap = new Map<string, number>()
+    const rawOpenMap = new Map<string, number>()
     for (const r of rows) {
       const date = r['Date']?.trim()
       if (!date) continue
       const val = parseFloat(r[priceCol])
       if (!isNaN(val) && val > 0) rawMap.set(date, val)
+      if (hasOpen) {
+        const ov = parseFloat(r['Open'])
+        if (!isNaN(ov) && ov > 0) rawOpenMap.set(date, ov)
+      }
     }
 
-    // Forward-fill to all data dates
-    const filled = new Map<string, number>()
-    let last = NaN
-    for (const d of allDates) {
-      if (rawMap.has(d)) last = rawMap.get(d)!
-      if (!isNaN(last)) filled.set(d, last)
-    }
+    const filled     = ffill(rawMap)
+    const filledOpen  = hasOpen ? ffill(rawOpenMap) : null
 
-    if (ticker === 'TQQQ') alignedTqqq = filled
-    else if (ticker === 'SPY') alignedSpy = filled
-    else if (ticker === 'SOXX') alignedSoxx = filled
-    else alignedStocks.set(ticker, filled)
+    if (ticker === 'TQQQ')      { alignedTqqq = filled; alignedTqqqOpen = filledOpen }
+    else if (ticker === 'SPY')  { alignedSpy  = filled; alignedSpyOpen  = filledOpen }
+    else if (ticker === 'SOXX') { alignedSoxx = filled; alignedSoxxOpen = filledOpen }
+    else {
+      alignedStocks.set(ticker, filled)
+      if (filledOpen) alignedStocksOpen.set(ticker, filledOpen)
+    }
   }
 
-  return { data, topHoldings, alignedStocks, alignedTqqq, alignedSpy, alignedSoxx }
+  return { data, topHoldings, alignedStocks, alignedTqqq, alignedSpy, alignedSoxx,
+    alignedStocksOpen, alignedTqqqOpen, alignedSpyOpen, alignedSoxxOpen }
 }

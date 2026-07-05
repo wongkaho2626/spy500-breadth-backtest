@@ -38,12 +38,37 @@ INITIAL_CAPITAL = 1_000_000.0
 CONTRIBUTION    = 200_000.0
 OUT_FILE        = Path(__file__).parent / "stock30spy40soxx30_dca_rolling.csv"
 
+# ── Execution timing ──────────────────────────────────────────────────────────
+# Signals come from end-of-day NDX closes; the earliest tradeable fill is the NEXT
+# session. Default: a signal on day t fills at day t+1's OPEN of the traded legs.
+# Set EXECUTION_LAG=0 and FILL_PRICE="close" for the legacy same-day-close fill.
+EXECUTION_LAG = 1        # bars between signal and fill (0 = same day, look-ahead)
+FILL_PRICE    = "open"   # "open" or "close" of the fill bar
+
 
 def run_window(window: pd.DataFrame, top_holdings: dict, aligned_stocks: dict,
                 aligned_spy: pd.Series, aligned_soxx: pd.Series,
-                n_contributions: int) -> float:
+                n_contributions: int,
+                stock_opens: dict | None = None,
+                spy_open: pd.Series | None = None,
+                soxx_open: pd.Series | None = None,
+                execution_lag: int = EXECUTION_LAG,
+                fill_on: str = FILL_PRICE) -> float:
     """Simulate the Stock/SPY/SOXX breadth-signal strategy over one window,
-    injecting CONTRIBUTION every YEAR_ROWS rows. Returns the final value."""
+    injecting CONTRIBUTION every YEAR_ROWS rows. Returns the final value.
+
+    Signals read the NDX close from `execution_lag` bars ago; fills happen on the
+    current bar at each leg's open (fill_on="open") or close. lag=0 reproduces the
+    legacy same-day look-ahead fill. Mark-to-market always uses closes."""
+    stock_opens = stock_opens or {}
+
+    def fill_px(close_s, open_s, date):
+        if fill_on == "open" and open_s is not None:
+            v = qpb._safe(open_s, date)
+            if not pd.isna(v):
+                return v
+        return qpb._safe(close_s, date)
+
     position       = "OUT"
     cooldown_until: pd.Timestamp | None = None
     last_sell_reason: str | None = None
@@ -61,35 +86,43 @@ def run_window(window: pd.DataFrame, top_holdings: dict, aligned_stocks: dict,
     cash_reserve        = 0.0
     contributions_done  = 0
 
-    for i, date in enumerate(window.index):
-        row = window.loc[date]
+    idx = window.index
+    for i, date in enumerate(idx):
+        row = window.iloc[i]
+        # Signal bar: the row `execution_lag` bars ago (what was known at that close).
+        srow = window.iloc[i - execution_lag] if i - execution_lag >= 0 else None
+        sig_price = float(srow["price"]) if srow is not None else float(row["price"])
+        breadth   = srow["breadth"] if srow is not None else float("nan")
+
         if i > 0 and i % YEAR_ROWS == 0 and contributions_done < n_contributions:
             cash_reserve += CONTRIBUTION
             contributions_done += 1
 
-        price   = float(row["price"])
-        breadth = row["breadth"]
+        price = float(row["price"])   # today's close (mark-to-market)
 
         if position == "OUT":
             if i == 0:
                 do_buy = True
-            else:
-                vote_gate   = bool(row["vote_gate"])
+            elif srow is not None:
+                vote_gate   = bool(srow["vote_gate"])
                 cooldown_ok = cooldown_until is None or date > cooldown_until
                 washout_buy = (not pd.isna(breadth) and breadth < qpb.BUY_B200_THRESH
                                and vote_gate)
                 # Trend re-entry on a fresh MA200 recross (NDX): rejoin when the
                 # last exit was a climax-top or price is back above the prior exit.
                 recross_ok  = last_sell_reason == "climax-top" or (
-                    last_exit_price is not None and price > last_exit_price)
-                trend_buy   = bool(row["ma200_recross"]) and recross_ok
+                    last_exit_price is not None and sig_price > last_exit_price)
+                trend_buy   = bool(srow["ma200_recross"]) and recross_ok
                 do_buy = cooldown_ok and (washout_buy or trend_buy)
+            else:
+                do_buy = False
             if do_buy:
                 year         = date.year
                 stock_ticker = top_holdings.get(year) or top_holdings.get(year - 1)
-                stock_px = qpb._safe(aligned_stocks.get(stock_ticker) if stock_ticker else None, date)
-                spy_px   = qpb._safe(aligned_spy,  date)
-                soxx_px  = qpb._safe(aligned_soxx, date)
+                stock_px = fill_px(aligned_stocks.get(stock_ticker) if stock_ticker else None,
+                                   stock_opens.get(stock_ticker) if stock_ticker else None, date)
+                spy_px   = fill_px(aligned_spy,  spy_open,  date)
+                soxx_px  = fill_px(aligned_soxx, soxx_open, date)
 
                 if cash_reserve > 0:
                     stock_bucket += cash_reserve * qpb.STOCK_WEIGHT
@@ -116,24 +149,26 @@ def run_window(window: pd.DataFrame, top_holdings: dict, aligned_stocks: dict,
                 soxx_shares  = (soxx_bucket  / soxx_entry_px)  if soxx_active  else 0.0
 
                 holding_ticker = stock_ticker
-                ndx_high       = price
+                ndx_high       = sig_price
                 macd_age = ext_age = 10**9
                 position       = "IN"
 
         elif position == "IN":
-            ndx_high     = max(ndx_high, price)
-            macd_age     = 0 if bool(row["macd_cross"]) else macd_age + 1
-            ext_age      = 0 if bool(row["ext10"])      else ext_age + 1
-            price_rose   = bool(row["price_rose"])
-            breadth_fell = bool(row["breadth_fell"])
-            bearish_div  = price_rose and breadth_fell and breadth < qpb.DIVERGENCE_BREADTH_CAP
+            ndx_high     = max(ndx_high, sig_price)
+            macd_age     = 0 if (srow is not None and bool(srow["macd_cross"])) else macd_age + 1
+            ext_age      = 0 if (srow is not None and bool(srow["ext10"]))      else ext_age + 1
+            price_rose   = bool(srow["price_rose"])   if srow is not None else False
+            breadth_fell = bool(srow["breadth_fell"]) if srow is not None else False
+            bearish_div  = (price_rose and breadth_fell
+                            and not pd.isna(breadth) and breadth < qpb.DIVERGENCE_BREADTH_CAP)
             climax       = (macd_age < qpb.CLIMAX_VOTE_WINDOW) and (ext_age < qpb.CLIMAX_VOTE_WINDOW)
-            trail_hit    = price <= ndx_high * (1 - qpb.TRAILING_STOP_PCT / 100)
+            trail_hit    = sig_price <= ndx_high * (1 - qpb.TRAILING_STOP_PCT / 100)
 
             if bearish_div or climax or trail_hit:
-                stock_px_exit = qpb._safe(aligned_stocks.get(holding_ticker) if holding_ticker else None, date)
-                spy_px_exit   = qpb._safe(aligned_spy,  date)
-                soxx_px_exit  = qpb._safe(aligned_soxx, date)
+                stock_px_exit = fill_px(aligned_stocks.get(holding_ticker) if holding_ticker else None,
+                                        stock_opens.get(holding_ticker) if holding_ticker else None, date)
+                spy_px_exit   = fill_px(aligned_spy,  spy_open,  date)
+                soxx_px_exit  = fill_px(aligned_soxx, soxx_open, date)
 
                 gross_stock = (stock_shares * stock_px_exit * (1 - qpb.SLIPPAGE)
                                if stock_active and not pd.isna(stock_px_exit) else stock_bucket)
@@ -152,7 +187,7 @@ def run_window(window: pd.DataFrame, top_holdings: dict, aligned_stocks: dict,
                 cooldown_until = date + pd.Timedelta(days=qpb.COOLDOWN_DAYS)
                 last_sell_reason = ("bearish-divergence" if bearish_div
                                     else "climax-top" if climax else "trailing-stop")
-                last_exit_price = price
+                last_exit_price = sig_price
                 stock_shares = spy_shares = soxx_shares = 0.0
 
     last_date = window.index[-1]
@@ -182,6 +217,7 @@ def run_buyhold(window: pd.DataFrame, n_contributions: int) -> float:
 def main() -> None:
     print("Loading data (breadth via breadth_daily.csv)...")
     merged, top_holdings, aligned_stocks, _aligned_tqqq, aligned_spy, aligned_soxx = qpb.load_data()
+    stock_opens, _tqqq_open, spy_open, soxx_open = qpb.load_open_series(top_holdings, merged.index)
     L = len(merged)
     print(f"Merged rows: {L:,}  ({merged.index[0].date()} -> {merged.index[-1].date()})")
 
@@ -200,7 +236,9 @@ def main() -> None:
         for w in range(n_windows):
             window = merged.iloc[w: w + win_len]
             strat_finals[w] = run_window(window, top_holdings, aligned_stocks,
-                                          aligned_spy, aligned_soxx, n_contrib)
+                                          aligned_spy, aligned_soxx, n_contrib,
+                                          stock_opens=stock_opens, spy_open=spy_open,
+                                          soxx_open=soxx_open)
             bh_finals[w] = run_buyhold(window, n_contrib)
 
         strat_ret = (strat_finals - deployed) / deployed * 100
