@@ -34,6 +34,14 @@ INITIAL_CAPITAL         = 10_000.0
 COMMISSION              = 1.0
 SLIPPAGE                = 0.0005
 
+# ── Execution timing ──────────────────────────────────────────────────────────
+# Signals come from end-of-day NDX closes; the earliest tradeable fill is the
+# NEXT session. Default: a signal on day t fills at day t+1's OPEN of the traded
+# stocks. Set EXECUTION_LAG=0 and FILL_PRICE="close" for the legacy same-day-close
+# (look-ahead) fill. The annual rebalance is scheduled, so it fills same-day.
+EXECUTION_LAG = 1        # bars between signal and fill (0 = same day, look-ahead)
+FILL_PRICE    = "open"   # "open" or "close" of the fill bar
+
 # ── Company name → ticker ─────────────────────────────────────────────────────
 NAME_TO_TICKER = {
     "Cisco Systems Inc.":    "CSCO",
@@ -79,10 +87,11 @@ def load_ndx_breadth() -> pd.DataFrame:
     ndx["Date"] = pd.to_datetime(ndx["Date"], format="%m/%d/%Y")
     ndx.set_index("Date", inplace=True)
     ndx["price"] = _parse_price(ndx["Price"])
+    ndx["open"]  = _parse_price(ndx["Open"])
 
     b200 = _load_breadth()
 
-    merged = ndx[["price"]].join(
+    merged = ndx[["price", "open"]].join(
         b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"
     )
     merged.sort_index(inplace=True)
@@ -122,16 +131,17 @@ def load_holdings(top_n: int = 2) -> dict[int, list[tuple[str, float]]]:
     return holdings
 
 
-def load_stock_prices(tickers: set[str]) -> dict[str, pd.Series]:
+def load_stock_prices(tickers: set[str], col: str = "Close") -> dict[str, pd.Series]:
     prices: dict[str, pd.Series] = {}
     for ticker in tickers:
         path = PRICES_DIR / f"{ticker}.csv"
         if not path.exists():
             print(f"  [WARNING] No price file for {ticker}, skipping.")
             continue
-        df = pd.read_csv(path, index_col=0, parse_dates=True)
-        col = "Close" if "Close" in df.columns else df.columns[0]
-        prices[ticker] = df[col].dropna()
+        df = pd.read_csv(path, index_col=0)
+        df.index = pd.to_datetime(df.index, format="ISO8601", utc=True).tz_localize(None)
+        use = col if col in df.columns else ("Close" if "Close" in df.columns else df.columns[0])
+        prices[ticker] = df[use].dropna()
     return prices
 
 
@@ -195,7 +205,17 @@ def run_strategy(
     df: pd.DataFrame,
     holdings: dict[int, list[tuple[str, float]]],
     prices: dict[str, pd.Series],
+    opens: dict[str, pd.Series] | None = None,
+    execution_lag: int = EXECUTION_LAG,
+    fill_on: str = FILL_PRICE,
 ) -> tuple[pd.Series, list[dict], dict | None]:
+    """Signals are close-based (on NDX); a signal on day t fills `execution_lag`
+    bars later, buying/selling the basket at the fill bar's open (fill_on="open")
+    or close. lag=0 requires fill_on="close" (legacy same-day look-ahead). Mark-to-
+    market always uses stock closes."""
+    if fill_on == "open" and execution_lag < 1:
+        raise ValueError("fill_on='open' requires execution_lag >= 1 (open precedes close)")
+    fill_src = opens if (fill_on == "open" and opens) else prices
 
     position           = "OUT"
     basket: dict[str, float] = {}
@@ -208,73 +228,101 @@ def run_strategy(
     entry_holdings: list[str] = []
     last_exit_ndx: float | None = None
 
+    pending: dict | None = None
+    rows = list(df.iterrows())
+    n = len(rows)
     prev_year: int | None = None
 
-    for date, row in df.iterrows():
+    def execute_due(i, date, year, ndx_price):
+        """Fill a pending basket order due this bar, at fill_src prices. True if filled."""
+        nonlocal position, basket, original_entry_val, trade_min_val, entry_holdings
+        nonlocal entry_date, portfolio, last_exit_ndx, pending
+        if pending is None or pending["fill_at"] != i:
+            return False
+        if pending["action"] == "BUY" and position == "OUT":
+            comp = holdings.get(year, [])
+            if comp:
+                cash_to_invest     = portfolio - COMMISSION
+                basket             = build_basket(cash_to_invest, comp, fill_src, date)
+                original_entry_val = basket_value(basket, fill_src, date)
+                trade_min_val      = original_entry_val
+                entry_holdings     = list(basket.keys())
+                entry_date         = date
+                position           = "IN"
+                portfolio          = 0.0
+                pending = None
+                return True
+            pending = None
+            return False
+        if pending["action"] == "SELL" and position == "IN":
+            exit_val     = basket_value(basket, fill_src, date)
+            eff_exit_val = exit_val * (1 - SLIPPAGE) - COMMISSION
+            gross_ret    = (eff_exit_val - original_entry_val) / original_entry_val if original_entry_val else 0
+            mae          = (trade_min_val - original_entry_val) / original_entry_val * 100
+            portfolio    = eff_exit_val
+            trades.append({
+                "entry_date":       entry_date,
+                "exit_date":        date,
+                "entry_basket_val": original_entry_val,
+                "exit_basket_val":  eff_exit_val,
+                "return_pct":       gross_ret * 100,
+                "max_drawdown_pct": mae,
+                "accumulated":      eff_exit_val,
+                "sell_reason":      "bearish-divergence",
+                "entry_holdings":   entry_holdings,
+                "exit_holdings":    list(basket.keys()),
+            })
+            basket   = {}
+            position = "OUT"
+            last_exit_ndx = ndx_price
+            pending = None
+            return True
+        pending = None
+        return False
+
+    for i in range(n):
+        date, row = rows[i]
         ndx_price    = row["price"]
         breadth      = row["breadth"]
         price_rose   = bool(row["price_rose"])
         breadth_fell = bool(row["breadth_fell"])
         year         = date.year
 
-        # ── Annual rebalance during an open trade ──────────────────────────
+        # ── Annual rebalance during an open trade (scheduled, no signal lag) ──
         if position == "IN" and prev_year is not None and year != prev_year:
             new_comp = holdings.get(year, holdings.get(year - 1, []))
-            current_val = basket_value(basket, prices, date)
+            current_val = basket_value(basket, fill_src, date)
             if current_val > 0 and new_comp:
                 after_sell = current_val * (1 - SLIPPAGE) - COMMISSION
-                basket     = build_basket(after_sell, new_comp, prices, date)
+                basket     = build_basket(after_sell, new_comp, fill_src, date)
                 # original_entry_val and trade_min_val intentionally NOT reset here
 
         prev_year = year
 
-        # ── State machine ──────────────────────────────────────────────────
-        if position == "OUT":
-            washout_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH
-            trend_buy   = bool(row["ma200_recross"]) and (
-                last_exit_ndx is not None and ndx_price > last_exit_ndx)
-            do_buy = washout_buy or trend_buy
-            if do_buy:
-                comp = holdings.get(year, [])
-                if not comp:
-                    values[date] = portfolio
-                    continue
-                cash_to_invest     = portfolio - COMMISSION
-                basket             = build_basket(cash_to_invest, comp, prices, date)
-                original_entry_val = basket_value(basket, prices, date)
-                trade_min_val      = original_entry_val
-                entry_holdings     = list(basket.keys())
-                entry_date         = date
-                position           = "IN"
-                portfolio          = 0.0
+        # ── Execute an order that comes due today (from an earlier signal) ────
+        executed = execute_due(i, date, year, ndx_price)
 
-        elif position == "IN":
-            current_val   = basket_value(basket, prices, date)
-            trade_min_val = min(trade_min_val, current_val)
+        # ── Evaluate signals on today's close → schedule a fill ──────────────
+        if not executed and pending is None:
+            if position == "OUT":
+                washout_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH
+                trend_buy   = bool(row["ma200_recross"]) and (
+                    last_exit_ndx is not None and ndx_price > last_exit_ndx)
+                do_buy = washout_buy or trend_buy
+                if do_buy and holdings.get(year) and i + execution_lag < n:
+                    pending = {"action": "BUY", "fill_at": i + execution_lag}
 
-            bearish_div = price_rose and breadth_fell and breadth < DIVERGENCE_BREADTH_CAP
-            if bearish_div:
-                eff_exit_val = current_val * (1 - SLIPPAGE) - COMMISSION
-                gross_ret    = (eff_exit_val - original_entry_val) / original_entry_val if original_entry_val else 0
-                mae          = (trade_min_val - original_entry_val) / original_entry_val * 100
-                portfolio    = eff_exit_val
-                trades.append({
-                    "entry_date":       entry_date,
-                    "exit_date":        date,
-                    "entry_basket_val": original_entry_val,
-                    "exit_basket_val":  eff_exit_val,
-                    "return_pct":       gross_ret * 100,
-                    "max_drawdown_pct": mae,
-                    "accumulated":      eff_exit_val,
-                    "sell_reason":      "bearish-divergence",
-                    "entry_holdings":   entry_holdings,
-                    "exit_holdings":    list(basket.keys()),
-                })
-                basket   = {}
-                position = "OUT"
-                last_exit_ndx = ndx_price
+            elif position == "IN":
+                current_val   = basket_value(basket, prices, date)
+                trade_min_val = min(trade_min_val, current_val)
+                bearish_div = price_rose and breadth_fell and breadth < DIVERGENCE_BREADTH_CAP
+                if bearish_div and i + execution_lag < n:
+                    pending = {"action": "SELL", "fill_at": i + execution_lag}
 
-        # ── Mark-to-market ─────────────────────────────────────────────────
+            # Same-day execution (lag 0): the order just set is due this bar.
+            executed = execute_due(i, date, year, ndx_price)
+
+        # ── Mark-to-market (always on closes) ────────────────────────────────
         if position == "IN":
             values[date] = basket_value(basket, prices, date)
         else:
@@ -463,8 +511,13 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     print(f"\nChart saved → {out}")
 
 
-def run_qqq_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
-    """Replicate qqq_backtest.py signal logic (no trailing stop) on the NDX price series."""
+def run_qqq_strategy(df: pd.DataFrame, execution_lag: int = EXECUTION_LAG,
+                     fill_on: str = FILL_PRICE) -> tuple[pd.Series, list[dict], dict | None]:
+    """Replicate qqq_backtest.py signal logic (no trailing stop) on the NDX price
+    series. Signals are close-based; a signal on day t fills `execution_lag` bars
+    later at that bar's open (fill_on="open") or close."""
+    if fill_on == "open" and execution_lag < 1:
+        raise ValueError("fill_on='open' requires execution_lag >= 1 (open precedes close)")
     position   = "OUT"
     eff_entry  = raw_entry = 0.0
     entry_date = None
@@ -473,38 +526,68 @@ def run_qqq_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | No
     trades: list[dict] = []
     values: dict = {}
 
-    for date, row in df.iterrows():
+    pending: dict | None = None
+    rows = list(df.iterrows())
+    n = len(rows)
+
+    def execute_due(i, date, fill_price):
+        nonlocal position, eff_entry, raw_entry, entry_date, trade_low, portfolio, pending
+        if pending is None or pending["fill_at"] != i:
+            return False
+        if pending["action"] == "BUY" and position == "OUT":
+            portfolio -= COMMISSION
+            eff_entry  = fill_price * (1 + SLIPPAGE)
+            raw_entry  = fill_price
+            entry_date = date
+            trade_low  = fill_price
+            position = "IN"
+            pending = None
+            return True
+        if pending["action"] == "SELL" and position == "IN":
+            eff_exit  = fill_price * (1 - SLIPPAGE)
+            gross_ret = (eff_exit - eff_entry) / eff_entry
+            portfolio *= (1 + gross_ret)
+            portfolio -= COMMISSION
+            trades.append({
+                "entry_date":       entry_date,
+                "exit_date":        date,
+                "entry_price":      raw_entry,
+                "exit_price":       fill_price,
+                "return_pct":       gross_ret * 100,
+                "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
+                "accumulated":      portfolio,
+                "sell_reason":      "bearish-divergence",
+            })
+            position = "OUT"
+            pending = None
+            return True
+        pending = None
+        return False
+
+    for i in range(n):
+        date, row = rows[i]
         price        = row["price"]
         breadth      = row["breadth"]
         price_rose   = bool(row["price_rose"])
         breadth_fell = bool(row["breadth_fell"])
+        if fill_on == "open" and not pd.isna(row["open"]):
+            fill_price = row["open"]
+        else:
+            fill_price = price
 
-        if position == "OUT":
-            if not pd.isna(breadth) and breadth < BUY_B200_THRESH:
-                portfolio -= COMMISSION
-                eff_entry  = price * (1 + SLIPPAGE)
-                raw_entry  = price
-                entry_date = date
-                trade_low  = price
-                position   = "IN"
-        elif position == "IN":
-            trade_low = min(trade_low, price)
-            if price_rose and breadth_fell and breadth < DIVERGENCE_BREADTH_CAP:
-                eff_exit  = price * (1 - SLIPPAGE)
-                gross_ret = (eff_exit - eff_entry) / eff_entry
-                portfolio *= (1 + gross_ret)
-                portfolio -= COMMISSION
-                trades.append({
-                    "entry_date":       entry_date,
-                    "exit_date":        date,
-                    "entry_price":      raw_entry,
-                    "exit_price":       price,
-                    "return_pct":       gross_ret * 100,
-                    "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
-                    "accumulated":      portfolio,
-                    "sell_reason":      "bearish-divergence",
-                })
-                position = "OUT"
+        executed = execute_due(i, date, fill_price)
+
+        if not executed and pending is None:
+            if position == "OUT":
+                if (not pd.isna(breadth) and breadth < BUY_B200_THRESH
+                        and i + execution_lag < n):
+                    pending = {"action": "BUY", "fill_at": i + execution_lag}
+            elif position == "IN":
+                trade_low = min(trade_low, price)
+                if (price_rose and breadth_fell and breadth < DIVERGENCE_BREADTH_CAP
+                        and i + execution_lag < n):
+                    pending = {"action": "SELL", "fill_at": i + execution_lag}
+            executed = execute_due(i, date, fill_price)
 
         values[date] = portfolio * (price * (1 - SLIPPAGE) / eff_entry) if position == "IN" else portfolio
 
@@ -644,10 +727,11 @@ def main() -> None:
                    for comps in h.values() for t, _ in comps}
     print("Loading individual stock prices...")
     prices = load_stock_prices(all_tickers)
+    opens  = load_stock_prices(all_tickers, col="Open")
 
     # ── Run strategies ────────────────────────────────────────────────────
     h1                     = load_holdings(top_n=1)
-    strat1, trades1, open1 = run_strategy(df, h1, prices)
+    strat1, trades1, open1 = run_strategy(df, h1, prices, opens)
     qqq, trades_q, open_q  = run_qqq_strategy(df)
     benchmark              = run_benchmark(df)
 
