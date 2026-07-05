@@ -47,6 +47,13 @@ DIVERGENCE_BREADTH_CAP  = 60.0
 COMMISSION              = 1.0
 SLIPPAGE                = 0.0005
 
+# ── Execution timing ──────────────────────────────────────────────────────────
+# Signals come from end-of-day NDX closes; the earliest tradeable fill is the NEXT
+# session. Default: a signal on day t fills at day t+1's OPEN of the traded legs.
+# Set EXECUTION_LAG=0 and FILL_PRICE="close" for the legacy same-day-close fill.
+EXECUTION_LAG = 1        # bars between signal and fill (0 = same day, look-ahead)
+FILL_PRICE    = "open"   # "open" or "close" of the fill bar
+
 # ── Portfolio ─────────────────────────────────────────────────────────────────
 INITIAL_CAPITAL    = 153_402.0
 ANNUAL_CONTRIB     = 26_880.0
@@ -121,7 +128,8 @@ def load_ndx(breadth: pd.DataFrame) -> pd.DataFrame:
     ndx["Date"] = pd.to_datetime(ndx["Date"], format="%m/%d/%Y")
     ndx.set_index("Date", inplace=True)
     ndx["price"] = _parse_price(ndx["Price"])
-    merged = ndx[["price"]].join(breadth, how="left")
+    ndx["open"]  = _parse_price(ndx["Open"])
+    merged = ndx[["price", "open"]].join(breadth, how="left")
     merged.sort_index(inplace=True)
     merged = merged[merged["breadth"].notna()]
     return _add_signals(merged)
@@ -145,7 +153,7 @@ def load_holdings(top_n: int = 1) -> dict[int, list[tuple[str, float]]]:
     return holdings
 
 
-def load_stock_prices(tickers: set[str]) -> dict[str, pd.Series]:
+def load_stock_prices(tickers: set[str], col: str = "Close") -> dict[str, pd.Series]:
     prices: dict[str, pd.Series] = {}
     for ticker in tickers:
         path = PRICES_DIR / f"{ticker}.csv"
@@ -154,8 +162,8 @@ def load_stock_prices(tickers: set[str]) -> dict[str, pd.Series]:
             continue
         df  = pd.read_csv(path, index_col=0)
         df.index = pd.to_datetime(df.index, format="mixed", utc=True).tz_localize(None)
-        col = "Close" if "Close" in df.columns else df.columns[0]
-        prices[ticker] = df[col].dropna()
+        use = col if col in df.columns else ("Close" if "Close" in df.columns else df.columns[0])
+        prices[ticker] = df[use].dropna()
     return prices
 
 
@@ -218,6 +226,9 @@ def run_portfolio(
     df_ndx:  pd.DataFrame,
     h1:      dict[int, list[tuple[str, float]]],
     stock_prices: dict[str, pd.Series],
+    stock_opens: dict[str, pd.Series] | None = None,
+    execution_lag: int = EXECUTION_LAG,
+    fill_on: str = FILL_PRICE,
 ) -> tuple[pd.Series, list[dict], list[dict], list[dict]]:
     """
     Simulate the 2-leg portfolio with annual contributions but NO annual NDX rebalance.
@@ -227,6 +238,8 @@ def run_portfolio(
     """
     common_idx    = df_ndx.index.sort_values()
     contrib_dates = _contribution_dates(common_idx)
+    # Basket fills use the fill-bar open (stock_opens); MTM/peaks use closes.
+    stock_fill = stock_opens if (fill_on == "open" and stock_opens) else stock_prices
 
     # ── NDX Top-1 leg state (basket-based) ───────────────────────────────────
     n_pos           = "OUT"
@@ -278,16 +291,21 @@ def run_portfolio(
     def n_mktval(date: pd.Timestamp) -> float:
         return _basket_value(n_basket, stock_prices, date) if n_pos == "IN" else n_cash
 
-    for date in common_idx:
+    for i, date in enumerate(common_idx):
         if date not in df_ndx.index:
             continue
 
         row_n   = df_ndx.loc[date]
-        n_price = float(row_n["price"])
-        breadth = float(row_n["breadth"])
-        sig_pr  = bool(row_n["price_rose"])
-        sig_bf  = bool(row_n["breadth_fell"])
-        year    = date.year
+        n_price = float(row_n["price"])      # today's NDX close (mark-to-market)
+        n_open  = float(row_n["open"]) if ("open" in row_n and not pd.isna(row_n["open"])) else n_price
+        n_fill  = n_open if fill_on == "open" else n_price   # QQQ-B leg fill price
+        # Signal bar: the row `execution_lag` bars ago (known at that close).
+        srow      = df_ndx.loc[common_idx[i - execution_lag]] if i - execution_lag >= 0 else None
+        sig_price = float(srow["price"]) if srow is not None else n_price
+        breadth   = float(srow["breadth"]) if srow is not None else float("nan")
+        sig_pr    = bool(srow["price_rose"]) if srow is not None else False
+        sig_bf    = bool(srow["breadth_fell"]) if srow is not None else False
+        year      = date.year
 
         # ── 0. Annual contribution ────────────────────────────────────────────
         if date in contrib_dates:
@@ -322,7 +340,7 @@ def run_portfolio(
         bearish_div = sig_pr and sig_bf and breadth < DIVERGENCE_BREADTH_CAP
         if bearish_div and trade_open:
             if n_pos == "IN":
-                cur_n      = _basket_value(n_basket, stock_prices, date)
+                cur_n      = _basket_value(n_basket, stock_fill, date)
                 exit_n     = cur_n * (1 - SLIPPAGE) - COMMISSION
                 deployed_n = n_orig_val + n_mid_contrib
                 ret_n      = (exit_n - deployed_n) / deployed_n * 100 if deployed_n > 0 else 0.0
@@ -349,7 +367,7 @@ def run_portfolio(
                 n_pos         = "OUT"
 
             if q_pos == "IN":
-                exit_q     = q_shares * n_price * (1 - SLIPPAGE) - COMMISSION
+                exit_q     = q_shares * n_fill * (1 - SLIPPAGE) - COMMISSION
                 deployed_q = q_entry_val + q_mid_contrib
                 ret_q      = (exit_q - deployed_q) / deployed_q * 100 if deployed_q > 0 else 0.0
                 qqqb_trades.append({
@@ -391,7 +409,7 @@ def run_portfolio(
                 "status":       "closed",
             })
             trade_open = False
-            last_exit_ndx = n_price
+            last_exit_ndx = sig_price
 
         # ── 2. Mark to market ─────────────────────────────────────────────────
         n_val = n_mktval(date)
@@ -425,8 +443,8 @@ def run_portfolio(
         washout_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH
         # Trend re-entry: fresh MA200 recross once NDX is back above the price we
         # last sold at (the divergence exit proven premature).
-        trend_buy   = bool(row_n["ma200_recross"]) and (
-            last_exit_ndx is not None and n_price > last_exit_ndx)
+        trend_buy   = (srow is not None and bool(srow["ma200_recross"]) and (
+            last_exit_ndx is not None and sig_price > last_exit_ndx))
         if not trade_open and (washout_buy or trend_buy):
             total_capital   = n_cash + q_cash + pending_contrib
             pending_contrib = 0.0
@@ -438,9 +456,9 @@ def run_portfolio(
             comp = h1.get(year, [])
             if comp:
                 n_buy           = n_alloc - COMMISSION
-                n_basket        = _build_basket(n_buy, comp, stock_prices, date)
+                n_basket        = _build_basket(n_buy, comp, stock_fill, date)
                 n_entry_comp    = comp
-                n_orig_val      = _basket_value(n_basket, stock_prices, date)
+                n_orig_val      = _basket_value(n_basket, stock_fill, date)
                 n_entry_val     = n_orig_val
                 n_mid_contrib   = 0.0
                 n_price_low     = n_orig_val
@@ -452,9 +470,9 @@ def run_portfolio(
 
             # Enter QQQ-B
             q_buy         = q_alloc - COMMISSION
-            q_shares      = q_buy / (n_price * (1 + SLIPPAGE))
+            q_shares      = q_buy / (n_fill * (1 + SLIPPAGE))
             q_entry_val   = q_buy
-            q_entry_price = n_price
+            q_entry_price = n_fill
             q_mid_contrib = 0.0
             q_price_low   = n_price
             q_port_peak   = q_buy;  q_worst_dd = 0.0;  q_trough = q_buy
@@ -733,10 +751,11 @@ def main() -> None:
     tickers = {t for comps in h1.values() for t, _ in comps}
     print(f"Loading stock prices: {sorted(tickers)}")
     stock_prices = load_stock_prices(tickers)
+    stock_opens  = load_stock_prices(tickers, col="Open")
 
     print("\nRunning portfolio simulation…")
     equity, comb_trades, ndxa_trades, qqqb_trades = run_portfolio(
-        df_ndx, h1, stock_prices
+        df_ndx, h1, stock_prices, stock_opens=stock_opens
     )
 
     last_date = df_ndx.index[-1]
