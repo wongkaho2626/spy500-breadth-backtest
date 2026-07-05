@@ -74,8 +74,13 @@ def precompute(df: pd.DataFrame, ensemble: bool) -> dict:
     macd_cross[1:] = (hist[1:] < 0) & (hist[:-1] >= 0)
     ext10 = (s / s.rolling(10).mean() - 1 >= EXT10_PCT / 100).fillna(False).to_numpy()
 
+    # Trend re-entry: fresh close back above MA200.
+    cross_up = np.zeros(len(price), dtype=bool)
+    cross_up[1:] = (price[1:] > ma200[1:]) & (price[:-1] <= ma200[:-1])
+
     return {"price": price, "dates": df.index, "washout": washout,
-            "bearish_div": bearish_div, "macd_cross": macd_cross, "ext10": ext10}
+            "bearish_div": bearish_div, "macd_cross": macd_cross, "ext10": ext10,
+            "cross_up": cross_up}
 
 
 def run_engine(pre: dict, exec_price: np.ndarray | None = None, exec_lag: int = 0,
@@ -93,6 +98,8 @@ def run_engine(pre: dict, exec_price: np.ndarray | None = None, exec_lag: int = 
     high = 0.0
     macd_age = ext_age = 10**9
     cooldown_until = None
+    last_sell_reason = None
+    last_exit_price = None
     n_sells = 0
     pending: tuple[str, float] | None = None   # (action, target_weight)
     values = np.empty(n)
@@ -135,18 +142,32 @@ def run_engine(pre: dict, exec_price: np.ndarray | None = None, exec_lag: int = 
             climax = (macd_age < CLIMAX_WIN) and (ext_age < CLIMAX_WIN)
             trail = ndx[i] <= high * (1 - TRAIL_PCT / 100)
             target = weight
+            reason = None
             if pre["bearish_div"][i] or trail:
                 target = 0.0
+                reason = "other"
             elif climax:
-                target = 0.5 if (partial_climax and weight == 1.0) else 0.0
+                if partial_climax and weight == 1.0:
+                    target = 0.5
+                else:
+                    target = 0.0
+                    reason = "climax-top"
             if target < weight:
                 if exec_lag == 0:
                     do_sell(i, target)
                 else:
                     pending = ("sell", target)
+                if target == 0.0:
+                    last_sell_reason = reason
+                    last_exit_price = ndx[i]
         elif pending is None:
             cd_ok = cooldown_until is None or dates[i] > cooldown_until
-            if pre["washout"][i] and cd_ok:
+            # Trend re-entry: fresh MA200 recross when the last exit was a
+            # climax-top or NDX is back above the prior exit price.
+            recross_ok = last_sell_reason == "climax-top" or (
+                last_exit_price is not None and ndx[i] > last_exit_price)
+            trend = bool(pre["cross_up"][i]) and recross_ok
+            if (pre["washout"][i] or trend) and cd_ok:
                 high = ndx[i]
                 macd_age = ext_age = 10**9
                 if exec_lag == 0:

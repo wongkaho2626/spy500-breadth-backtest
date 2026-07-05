@@ -94,6 +94,9 @@ def precompute(df: pd.DataFrame, ind: pd.DataFrame) -> dict:
                        & (breadth < p["breadth_cap"]))
         vote_gate = (np.isnan(vix) | (vix > p["vix_thresh"])) | (np.isnan(ma200) | (price > ma200))
         washout   = (breadth < p["buy_thresh"]) & vote_gate
+    # Trend re-entry: fresh close back above MA200 (gate reduces to "above prior exit").
+    cross_up = np.zeros(len(price), dtype=bool)
+    cross_up[1:] = (price[1:] > ma200[1:]) & (price[:-1] <= ma200[:-1])
 
     def chg(col: str) -> np.ndarray:
         a = ind[col].to_numpy()
@@ -107,7 +110,7 @@ def precompute(df: pd.DataFrame, ind: pd.DataFrame) -> dict:
     bear_cross[1:] = (hist[1:] < 0) & (hist[:-1] >= 0)
 
     return {
-        "price": price, "dates": df.index,
+        "price": price, "dates": df.index, "cross_up": cross_up,
         "washout": washout, "bearish_div": bearish_div, "price_rose": price_rose,
         "hy": ind["hy"].to_numpy(), "hy_ma": ind["hy_ma"].to_numpy(),
         "hy_chg": chg("hy"), "nhnl": ind["nhnl"].to_numpy(),
@@ -119,10 +122,11 @@ def precompute(df: pd.DataFrame, ind: pd.DataFrame) -> dict:
 def run(pre: dict, entry_gate: np.ndarray | None = None,
         extra_exit: np.ndarray | None = None) -> tuple[pd.Series, int]:
     price, dates = pre["price"], pre["dates"]
-    washout, bearish_div = pre["washout"], pre["bearish_div"]
+    washout, bearish_div, cross_up = pre["washout"], pre["bearish_div"], pre["cross_up"]
 
     cash, shares = INITIAL_CAPITAL, 0.0
     cooldown_until = None
+    last_exit_price = None
     n_sells = 0
     values = np.empty(len(price))
 
@@ -133,11 +137,14 @@ def run(pre: dict, entry_gate: np.ndarray | None = None,
                 cash += shares * px * (1 - SLIPPAGE) - COMMISSION
                 shares = 0.0
                 cooldown_until = dates[i] + pd.Timedelta(days=COOLDOWN_DAYS)
+                last_exit_price = px
                 n_sells += 1
         else:
             cd_ok = cooldown_until is None or dates[i] > cooldown_until
             gate_ok = entry_gate is None or entry_gate[i]
-            if washout[i] and cd_ok and gate_ok:
+            # Trend re-entry: fresh MA200 recross once price is back above the prior exit.
+            trend = bool(cross_up[i]) and (last_exit_price is not None and px > last_exit_price)
+            if (washout[i] or trend) and cd_ok and gate_ok:
                 cash -= COMMISSION
                 shares = cash / (px * (1 + SLIPPAGE))
                 cash = 0.0
