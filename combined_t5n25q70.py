@@ -108,6 +108,12 @@ def _add_signals(df: pd.DataFrame) -> pd.DataFrame:
     bp = df["breadth"].shift(DIVERGENCE_WINDOW)
     df["price_rose"]   = ((df["price"] - pp) / pp * 100 >= DIVERGENCE_PRICE_RISE).fillna(False)
     df["breadth_fell"] = ((bp - df["breadth"]) >= DIVERGENCE_BREADTH_FALL).fillna(False)
+    # Trend re-entry: fresh close back above the 200-day MA (NDX). Bearish-div
+    # is the only exit, so the gate reduces to "NDX back above the prior exit".
+    ma200 = df["price"].rolling(200).mean()
+    df["ma200_recross"] = (
+        (df["price"] > ma200) & (df["price"].shift(1) <= ma200.shift(1))
+    ).fillna(False)
     return df
 
 
@@ -279,6 +285,7 @@ def run_portfolio(
 
     # ── Combined trade state ─────────────────────────────────────────────────
     trade_open        = False
+    last_exit_ndx: float | None = None
     comb_entry_date: pd.Timestamp | None = None
     comb_entry_val    = 0.0
     comb_mid_contribs = 0.0
@@ -460,6 +467,7 @@ def run_portfolio(
                 "status":       "closed",
             })
             trade_open = False
+            last_exit_ndx = n_price
 
         # ── 3. Mark to market ─────────────────────────────────────────────────
         t_val = t_mktval(t_price)
@@ -498,7 +506,12 @@ def run_portfolio(
                 q_worst_dd = dd;  q_trough = q_val
 
         # ── 5. Buy check ──────────────────────────────────────────────────────
-        if not trade_open and not pd.isna(breadth) and breadth < BUY_B200_THRESH:
+        washout_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH
+        # Trend re-entry: fresh MA200 recross once NDX is back above the price we
+        # last sold at (the divergence exit proven premature).
+        trend_buy   = bool(row_n["ma200_recross"]) and (
+            last_exit_ndx is not None and n_price > last_exit_ndx)
+        if not trade_open and (washout_buy or trend_buy):
             total_capital   = t_cash + n_cash + q_cash + pending_contrib
             pending_contrib = 0.0
 
