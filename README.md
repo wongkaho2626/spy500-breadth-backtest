@@ -8,6 +8,27 @@ A market-timing backtest engine for NASDAQ-heavy portfolios (QQQ, TQQQ, NDX top 
 
 **[Try it on GitHub Pages →](https://wongkaho2626.github.io/spy500-breadth-backtest/)**
 
+## Performance
+
+Canonical single-asset QQQ strategy (`qqq_backtest.py`), **2007–2026 on real daily
+breadth data, total-return accounting** (QQQ dividends reinvested while in the
+market, 13-week T-bill yield on cash while out), next-day-open fills, $1 + 0.05%
+costs per side:
+
+| Metric | Strategy | QQQ Buy & Hold |
+|---|---|---|
+| CAGR | **22.7%** | 16.4% |
+| Sharpe | **1.21** | 0.79 |
+| Max Drawdown | **−31.6%** | −53.4% |
+
+Full-history price-return run (2002+, which relies on a synthetic pre-2007
+breadth splice): 20.5% CAGR, Sharpe 1.12, −32.2% max drawdown, 17 trades,
+~68% time in market. Everything through 2026-07-02 is in-sample; parameters
+are frozen as of 2026-07-05 in
+[docs/frozen_params_2026-07-05.md](docs/frozen_params_2026-07-05.md) for
+out-of-sample tracking. Expect a future drawdown worse than the backtest's
+−32% (bootstrap 5th percentile ≈ −39%).
+
 ## How It Works
 
 The strategy uses the **S&P 500 breadth indicator** — the percentage of S&P 500 stocks trading above their 200-day moving average — as a market-health signal to time entries and exits.
