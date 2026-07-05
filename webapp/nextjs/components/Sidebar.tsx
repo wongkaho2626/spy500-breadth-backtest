@@ -93,6 +93,19 @@ export default function Sidebar({ form, onChange, onRun, loading }: Props) {
             onChange={e => onChange('cooldown_days', Number(e.target.value))}
             style={{ width: '100%', background: 'var(--sb2)', border: '1px solid var(--sb3)', borderRadius: 6, color: '#f1f5f9', fontSize: 12, padding: '5px 8px', outline: 'none' }} />
         </div>
+        <div style={{ marginBottom: 9 }}>
+          <label style={{ display: 'block', fontSize: 11.5, color: '#cbd5e1', marginBottom: 4 }}>Order Execution</label>
+          <select value={form.fill_mode}
+            onChange={e => onChange('fill_mode', e.target.value)}
+            style={{ width: '100%', background: 'var(--sb2)', border: '1px solid var(--sb3)', borderRadius: 6, color: '#f1f5f9', fontSize: 12, padding: '5px 8px', outline: 'none' }}>
+            <option value="next-open">Next day open (realistic)</option>
+            <option value="next-close">Next day close</option>
+            <option value="same-close">Same day close (look-ahead)</option>
+          </select>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
+            Signals are known only at the close, so orders fill the next session.
+          </div>
+        </div>
       </div>
 
       <button onClick={onRun} disabled={loading}

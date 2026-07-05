@@ -31,6 +31,7 @@ const DEFAULT_FORM: FormState = {
   qqq: 60, stock: 30, tqqq: 10, spy: 0, soxx: 0,
   initial_capital: 10000, monthly_contribution: 0, yearly_contribution: 0,
   cooldown_days: 15, start_date: '', end_date: '',
+  fill_mode: 'next-open',
 }
 
 export default function Page() {
@@ -73,7 +74,12 @@ export default function Page() {
           cooldown_days: form.cooldown_days,
           start_date: form.start_date || null,
           end_date: form.end_date || null,
+          fill_mode: form.fill_mode,
         },
+        appData.alignedStocksOpen,
+        appData.alignedTqqqOpen,
+        appData.alignedSpyOpen,
+        appData.alignedSoxxOpen,
       )
       // Map BacktestResult to BacktestResponse shape
       const data: BacktestResponse = {

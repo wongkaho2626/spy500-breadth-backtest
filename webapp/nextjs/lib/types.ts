@@ -44,4 +44,5 @@ export interface FormState {
   qqq: number; stock: number; tqqq: number; spy: number; soxx: number
   initial_capital: number; monthly_contribution: number; yearly_contribution: number
   cooldown_days: number; start_date: string; end_date: string
+  fill_mode: import('./backtest').FillMode  // execution model (default: next-open)
 }
