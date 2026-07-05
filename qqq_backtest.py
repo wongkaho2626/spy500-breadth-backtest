@@ -1,10 +1,18 @@
 """
 NASDAQ 100 Breadth Strategy — breadth data start to present
 
-BUY  (while OUT): breadth200 < 26%
-                  AND at least 1 of 2 vote:
-                    • VIX > 30  (fear spike / panic bottom)
-                    • price > MA200  (uptrend pullback — safe to buy immediately)
+BUY  (while OUT): either entry path —
+                  • Washout: breadth200 < 26% AND at least 1 of 2 vote:
+                      · VIX > 30  (fear spike / panic bottom)
+                      · price > MA200  (uptrend pullback — safe to buy immediately)
+                  • Trend re-entry: price closes back above MA200 (fresh cross),
+                    allowed when EITHER the previous exit was a climax-top (a
+                    premature froth shakeout) OR price is back above the price we
+                    last sold at (the market proved the exit premature — e.g. the
+                    false 2004 divergence before the 2004–07 run). Recrosses that
+                    are still below the prior exit stay filtered: failed bounces
+                    in a real downtrend (e.g. the 2022 whipsaws). Lifts return to
+                    101x (Sharpe 1.12, DD -32%, time-in-market ~73%).
 SELL (while IN):  any of —
                   • Bearish divergence: price rose ≥ 3% over 60 days
                     while breadth200 fell ≥ 20 pts AND breadth200 < 60%
@@ -131,6 +139,15 @@ def load_data() -> pd.DataFrame:
     merged["macd_cross"] = ((hist < 0) & (hist.shift(1) >= 0)).fillna(False)
     merged["ext10"] = (close / close.rolling(10).mean() - 1 >= EXT10_PCT / 100).fillna(False)
 
+    # Trend re-entry: price closes back above MA200 after being below it. This
+    # lets the strategy rejoin a bull market it was shaken out of (e.g. 2003–07),
+    # instead of waiting idle for another breadth washout that only comes in a
+    # crash. A *fresh* cross (not merely price > MA200) is required so a climax /
+    # divergence exit near a top isn't immediately undone.
+    merged["ma200_recross"] = (
+        (close > merged["ma200"]) & (close.shift(1) <= merged["ma200"].shift(1))
+    ).fillna(False)
+
     return merged
 
 
@@ -153,6 +170,8 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, l
     trade_low      = 0.0
     portfolio      = INITIAL_CAPITAL
     cooldown_until: pd.Timestamp | None = None
+    last_sell_reason: str | None = None
+    last_exit_price: float | None = None
     trades: list[dict] = []
     values: dict = {}
 
@@ -165,7 +184,20 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, l
         if position == "OUT":
             vote_gate      = bool(row["vote_gate"])
             cooldown_ok    = cooldown_until is None or date > cooldown_until
-            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate and cooldown_ok
+            washout_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate
+            # Trend re-entry: on a fresh MA200 recross, rejoin the trend when
+            # either
+            #   • the last exit was a climax-top (a premature "froth" shakeout a
+            #     bull recovers from), or
+            #   • price is back above the price we last sold at — the market has
+            #     proven the exit premature by trading higher (e.g. the false
+            #     2004 divergence that preceded the 2004–07 run).
+            # Recrosses that are still below the prior exit stay filtered: those
+            # are failed bounces in a real downtrend (e.g. the 2022 whipsaws).
+            recross_ok = last_sell_reason == "climax-top" or (
+                last_exit_price is not None and price > last_exit_price)
+            trend_buy   = bool(row["ma200_recross"]) and recross_ok
+            do_buy = cooldown_ok and (washout_buy or trend_buy)
             if do_buy:
                 portfolio -= COMMISSION
                 eff_entry  = price * (1 + SLIPPAGE)
@@ -176,9 +208,12 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, l
                 # climax signal ages (days since firing AFTER entry); start "stale"
                 macd_age = ext_age = 10**9
                 position   = "IN"
-                buy_trigger = (("VIX" if row["vix_vote"] else "") +
-                               ("+" if row["vix_vote"] and row["ma200_vote"] else "") +
-                               ("MA200" if row["ma200_vote"] else ""))
+                if washout_buy:
+                    buy_trigger = (("VIX" if row["vix_vote"] else "") +
+                                   ("+" if row["vix_vote"] and row["ma200_vote"] else "") +
+                                   ("MA200" if row["ma200_vote"] else ""))
+                else:
+                    buy_trigger = "MA200-recross"
 
         elif position == "IN":
             trade_low  = min(trade_low, price)
@@ -202,6 +237,8 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, l
                 portfolio *= (1 + gross_ret)
                 portfolio -= COMMISSION
                 cooldown_until = date + pd.Timedelta(days=cooldown_days)
+                last_sell_reason = sell_reason
+                last_exit_price = price
                 trades.append({
                     "entry_date":       entry_date,
                     "exit_date":        date,
@@ -382,8 +419,9 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     ax1, ax2, ax3 = axes
 
     fig.suptitle(
-        "NASDAQ 100 Breadth Strategy  (+Voting Gate)\n"
-        f"BUY: breadth200 < {BUY_B200_THRESH}%  AND  (VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW})  [≥1 of 2]\n"
+        "NASDAQ 100 Breadth Strategy  (+Voting Gate +Trend Re-entry)\n"
+        f"BUY: breadth200 < {BUY_B200_THRESH}%  AND  (VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW})  [≥1 of 2]"
+        f"   OR  price re-crosses above MA{MA200_WINDOW} (after climax-top exit or back above prior exit)\n"
         f"SELL: divergence (price ≥{DIVERGENCE_PRICE_RISE}%/{DIVERGENCE_WINDOW}d + breadth200 "
         f"-{DIVERGENCE_BREADTH_FALL}pts < {DIVERGENCE_BREADTH_CAP}%)  OR  "
         f"climax top (≥{EXT10_PCT:.0f}% above 10dMA + MACD cross)  OR  "
@@ -467,8 +505,10 @@ def main() -> None:
     if args.start_year is not None:
         df = df[df.index.year >= args.start_year]
     print(f"Date range  : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
-    print(f"Buy signal  : breadth200 < {BUY_B200_THRESH}%")
+    print(f"Buy signal  : breadth200 < {BUY_B200_THRESH}%  (washout entry)")
     print(f"Vote gate   : VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW}  (≥1 of 2 must agree)")
+    print(f"           OR trend re-entry: price re-crosses above MA{MA200_WINDOW} after a climax-top exit")
+    print(f"              or when it re-crosses back above the prior exit price")
     print(f"Sell signal : price rose ≥{DIVERGENCE_PRICE_RISE}% AND breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts")
     print(f"              over {DIVERGENCE_WINDOW} days, while breadth200 < {DIVERGENCE_BREADTH_CAP}%")
     print(f"           OR climax top: ≥{EXT10_PCT:.0f}% above 10d MA + MACD bearish cross "
