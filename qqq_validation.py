@@ -105,17 +105,24 @@ def run(df: pd.DataFrame, p: dict, regime: bool = False):
         vix_vote     = np.isnan(vix) | (vix > p["vix_thresh"])
         ma_vote      = np.isnan(ma200) | (price > ma200)
     vote_gate = vix_vote | ma_vote
+    # Trend re-entry: fresh close back above MA200. Divergence-only exit here, so
+    # the gate reduces to "price back above the prior exit price".
+    cross_up = np.zeros(len(price), dtype=bool)
+    cross_up[1:] = (price[1:] > ma200[1:]) & (price[:-1] <= ma200[:-1])
 
     position, portfolio = False, INITIAL_CAPITAL
     eff_entry = 0.0
     entry_i = -1
     cooldown_until = None
+    last_exit_price = None
     trades, values = [], np.empty(len(price))
 
     for i in range(len(price)):
         if not position:
             cd_ok = cooldown_until is None or dates[i] > cooldown_until
-            buy = breadth[i] < p["buy_thresh"] and vote_gate[i] and cd_ok
+            washout = breadth[i] < p["buy_thresh"] and vote_gate[i]
+            trend = bool(cross_up[i]) and (last_exit_price is not None and price[i] > last_exit_price)
+            buy = cd_ok and (washout or trend)
             if buy and regime:
                 r = riskon[i]
                 buy = (r is None) or (isinstance(r, float) and np.isnan(r)) or bool(r)
@@ -131,6 +138,7 @@ def run(df: pd.DataFrame, p: dict, regime: bool = False):
                 portfolio *= 1 + ret
                 portfolio -= COMMISSION
                 cooldown_until = dates[i] + pd.Timedelta(days=COOLDOWN_DAYS)
+                last_exit_price = price[i]
                 trades.append({"entry_i": entry_i, "exit_i": i, "return": ret})
                 position = False
         values[i] = portfolio * (price[i] * (1 - SLIPPAGE) / eff_entry) if position else portfolio

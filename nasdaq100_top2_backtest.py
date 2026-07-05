@@ -92,6 +92,14 @@ def load_ndx_breadth() -> pd.DataFrame:
     bp = merged["breadth"].shift(DIVERGENCE_WINDOW)
     merged["price_rose"]   = ((merged["price"] - pp) / pp * 100 >= DIVERGENCE_PRICE_RISE).fillna(False)
     merged["breadth_fell"] = ((bp - merged["breadth"]) >= DIVERGENCE_BREADTH_FALL).fillna(False)
+
+    # Trend re-entry: fresh close back above the 200-day MA (NDX). This strategy
+    # exits only on bearish divergence, so the re-entry gate reduces to "NDX back
+    # above the prior exit price" — the market proving the divergence exit premature.
+    ma200 = merged["price"].rolling(200).mean()
+    merged["ma200_recross"] = (
+        (merged["price"] > ma200) & (merged["price"].shift(1) <= ma200.shift(1))
+    ).fillna(False)
     return merged
 
 
@@ -198,6 +206,7 @@ def run_strategy(
     trades: list[dict] = []
     values: dict = {}
     entry_holdings: list[str] = []
+    last_exit_ndx: float | None = None
 
     prev_year: int | None = None
 
@@ -221,7 +230,10 @@ def run_strategy(
 
         # ── State machine ──────────────────────────────────────────────────
         if position == "OUT":
-            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH
+            washout_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH
+            trend_buy   = bool(row["ma200_recross"]) and (
+                last_exit_ndx is not None and ndx_price > last_exit_ndx)
+            do_buy = washout_buy or trend_buy
             if do_buy:
                 comp = holdings.get(year, [])
                 if not comp:
@@ -260,6 +272,7 @@ def run_strategy(
                 })
                 basket   = {}
                 position = "OUT"
+                last_exit_ndx = ndx_price
 
         # ── Mark-to-market ─────────────────────────────────────────────────
         if position == "IN":

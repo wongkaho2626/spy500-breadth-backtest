@@ -61,6 +61,13 @@ def load_data() -> pd.DataFrame:
     merged["price_rose"]   = ((merged["price"] - pp) / pp * 100 >= DIVERGENCE_PRICE_RISE).fillna(False)
     merged["breadth_fell"] = ((bp - merged["breadth"]) >= DIVERGENCE_BREADTH_FALL).fillna(False)
 
+    # Trend re-entry: fresh close back above the 200-day MA. Divergence-only exit,
+    # so the gate reduces to "price back above the prior exit price".
+    ma200 = merged["price"].rolling(200).mean()
+    merged["ma200_recross"] = (
+        (merged["price"] > ma200) & (merged["price"].shift(1) <= ma200.shift(1))
+    ).fillna(False)
+
     return merged
 
 
@@ -82,6 +89,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
     entry_date = None
     trade_low  = 0.0
     portfolio  = INITIAL_CAPITAL
+    last_exit_price: float | None = None
     trades: list[dict] = []
     values: dict = {}
 
@@ -92,7 +100,12 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
         breadth_fell = bool(row["breadth_fell"])
 
         if position == "OUT":
-            if not pd.isna(breadth) and breadth < BUY_B200_THRESH:
+            washout_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH
+            # Trend re-entry: fresh MA200 recross once price is back above the
+            # price we last sold at (divergence exit proven premature).
+            trend_buy   = bool(row["ma200_recross"]) and (
+                last_exit_price is not None and price > last_exit_price)
+            if washout_buy or trend_buy:
                 portfolio -= COMMISSION
                 eff_entry  = price * (1 + SLIPPAGE)
                 raw_entry  = price
@@ -119,6 +132,7 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                     "sell_reason":      "bearish-divergence",
                 })
                 position = "OUT"
+                last_exit_price = price
 
         if position == "IN":
             values[date] = portfolio * (price * (1 - SLIPPAGE) / eff_entry)

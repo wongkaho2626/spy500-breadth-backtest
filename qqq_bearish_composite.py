@@ -120,13 +120,18 @@ def precompute(df: pd.DataFrame) -> dict:
                        & ((bp - breadth) >= p["breadth_fall"]) & (breadth < p["breadth_cap"]))
         vote_gate = (np.isnan(vix) | (vix > p["vix_thresh"])) | (np.isnan(ma200) | (price > ma200))
         washout = (breadth < p["buy_thresh"]) & vote_gate
-    return {"price": price, "dates": df.index, "washout": washout, "bearish_div": bearish_div}
+    # Trend re-entry: fresh close back above MA200 (gate reduces to "above prior exit").
+    cross_up = np.zeros(len(price), dtype=bool)
+    cross_up[1:] = (price[1:] > ma200[1:]) & (price[:-1] <= ma200[:-1])
+    return {"price": price, "dates": df.index, "washout": washout,
+            "bearish_div": bearish_div, "cross_up": cross_up}
 
 
 def run(pre: dict, exit_signal: np.ndarray) -> tuple[pd.Series, int]:
-    price, dates = pre["price"], pre["dates"]
+    price, dates, cross_up = pre["price"], pre["dates"], pre["cross_up"]
     cash, shares = INITIAL_CAPITAL, 0.0
     cooldown_until, n_sells = None, 0
+    last_exit_price = None
     values = np.empty(len(price))
     for i in range(len(price)):
         px = price[i]
@@ -135,10 +140,12 @@ def run(pre: dict, exit_signal: np.ndarray) -> tuple[pd.Series, int]:
                 cash += shares * px * (1 - SLIPPAGE) - COMMISSION
                 shares = 0.0
                 cooldown_until = dates[i] + pd.Timedelta(days=COOLDOWN_DAYS)
+                last_exit_price = px
                 n_sells += 1
         else:
             cd_ok = cooldown_until is None or dates[i] > cooldown_until
-            if pre["washout"][i] and cd_ok:
+            trend = bool(cross_up[i]) and (last_exit_price is not None and px > last_exit_price)
+            if (pre["washout"][i] or trend) and cd_ok:
                 cash -= COMMISSION
                 shares = cash / (px * (1 + SLIPPAGE))
                 cash = 0.0

@@ -98,6 +98,10 @@ def load_data() -> pd.DataFrame:
     bp = merged["breadth"].shift(DIVERGENCE_WINDOW)
     merged["price_rose"]   = ((merged["price"] - pp) / pp * 100 >= DIVERGENCE_PRICE_RISE).fillna(False)
     merged["breadth_fell"] = ((bp - merged["breadth"]) >= DIVERGENCE_BREADTH_FALL).fillna(False)
+    # Trend re-entry: fresh close back above MA200 (gate reduces to "above prior exit").
+    merged["ma200_recross"] = (
+        (merged["price"] > merged["ma200"]) & (merged["price"].shift(1) <= merged["ma200"].shift(1))
+    ).fillna(False)
 
     # ── Sector data ───────────────────────────────────────────────────────────
     sectors = pd.DataFrame({s: _load_price_csv(DATA_DIR / f"{s}.csv") for s in SECTOR_ETFS})
@@ -143,6 +147,7 @@ def run_strategy(df: pd.DataFrame, *,
     entry_date = None
     portfolio  = INITIAL_CAPITAL
     cooldown_until: pd.Timestamp | None = None
+    last_exit_price: float | None = None
     trades: list[dict] = []
     values: dict = {}
 
@@ -151,10 +156,13 @@ def run_strategy(df: pd.DataFrame, *,
 
         if position == "OUT":
             cooldown_ok = cooldown_until is None or date > cooldown_until
-            do_buy = (not pd.isna(row["breadth"])
-                      and row["breadth"] < BUY_B200_THRESH
-                      and bool(row["vote_gate"])
-                      and cooldown_ok)
+            washout_buy = (not pd.isna(row["breadth"])
+                           and row["breadth"] < BUY_B200_THRESH
+                           and bool(row["vote_gate"]))
+            # Trend re-entry: fresh MA200 recross once price is back above the prior exit.
+            trend_buy   = bool(row["ma200_recross"]) and (
+                last_exit_price is not None and price > last_exit_price)
+            do_buy = cooldown_ok and (washout_buy or trend_buy)
             if do_buy and sector_buy:
                 do_buy = pd.isna(row["sec_breadth"]) or row["sec_breadth"] < SECTOR_BREADTH_BUY_MAX
             if do_buy and regime:
@@ -180,6 +188,7 @@ def run_strategy(df: pd.DataFrame, *,
                 portfolio *= (1 + gross_ret)
                 portfolio -= COMMISSION
                 cooldown_until = date + pd.Timedelta(days=COOLDOWN_DAYS)
+                last_exit_price = price
                 trades.append({
                     "entry_date": entry_date, "exit_date": date,
                     "entry_price": raw_entry, "exit_price": price,

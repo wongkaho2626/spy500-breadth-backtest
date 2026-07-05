@@ -28,6 +28,7 @@ export interface DayData {
   breadth_fell: boolean // breadth[i-DIVERGENCE_WINDOW] - breadth[i] >= DIVERGENCE_BREADTH_FALL
   macd_cross: boolean // MACD(12,26,9) histogram flipped negative today
   ext10: boolean      // price >= EXT10_PCT% above its 10-day MA
+  ma200_recross: boolean // price closed back above MA200 today (was <= yesterday)
 }
 
 export interface BacktestParams {
@@ -147,6 +148,14 @@ export function prepareData(
     ext10Arr[i] = m10 !== null && prices[i] / m10 - 1 >= EXT10_PCT / 100
   }
 
+  // Trend re-entry: fresh close back above MA200 (price > ma200 today, <= yesterday)
+  const ma200Recross: boolean[] = new Array(prices.length).fill(false)
+  for (let i = 1; i < prices.length; i++) {
+    const ma = ma200[i], maPrev = ma200[i - 1]
+    ma200Recross[i] = ma !== null && maPrev !== null
+      && prices[i] > ma && prices[i - 1] <= maPrev
+  }
+
   // Forward-fill VIX (some dates may be missing)
   let lastVix = NaN
   for (let i = 0; i < raw.length; i++) {
@@ -176,7 +185,7 @@ export function prepareData(
 
     rows.push({ date: r.date, price: r.price, breadth: r.breadth, vix: r.vix,
       ma200: ma, vix_vote, ma200_vote, vote_gate, price_rose, breadth_fell,
-      macd_cross: macdCross[i], ext10: ext10Arr[i] })
+      macd_cross: macdCross[i], ext10: ext10Arr[i], ma200_recross: ma200Recross[i] })
   }
 
   return rows
@@ -191,13 +200,19 @@ export function isInPositionAt(allData: DayData[], startDate: string, cooldownDa
   let ndxHigh = 0
   let macdAge = Number.MAX_SAFE_INTEGER
   let extAge  = Number.MAX_SAFE_INTEGER
+  let lastSellReason: string | null = null
+  let lastExitPrice: number | null = null
 
   for (const row of allData) {
     if (row.date >= startDate) break
 
     if (position === 'OUT') {
       const cooldownOk = cooldownUntil === null || row.date > cooldownUntil
-      if (!isNaN(row.breadth) && row.breadth < BUY_B200_THRESH && row.vote_gate && cooldownOk) {
+      const washoutBuy = !isNaN(row.breadth) && row.breadth < BUY_B200_THRESH && row.vote_gate
+      const recrossOk  = lastSellReason === 'climax-top'
+        || (lastExitPrice !== null && row.price > lastExitPrice)
+      const trendBuy   = row.ma200_recross && recrossOk
+      if (cooldownOk && (washoutBuy || trendBuy)) {
         position = 'IN'
         ndxHigh  = row.price
         macdAge  = Number.MAX_SAFE_INTEGER
@@ -213,6 +228,8 @@ export function isInPositionAt(allData: DayData[], startDate: string, cooldownDa
 
       if (bearishDiv || climax || trailHit) {
         position = 'OUT'
+        lastSellReason = bearishDiv ? 'bearish-divergence' : climax ? 'climax-top' : 'trailing-stop'
+        lastExitPrice = row.price
         const cooldownDate = new Date(row.date)
         cooldownDate.setDate(cooldownDate.getDate() + cooldownDays)
         cooldownUntil = cooldownDate.toISOString().slice(0, 10)
@@ -237,6 +254,8 @@ export function runStrategy(
 
   let position: 'IN' | 'OUT' = 'OUT'
   let cooldownUntil: string | null = null
+  let lastSellReason: string | null = null
+  let lastExitPrice: number | null = null
   const trades: Trade[] = []
   const values: [string, number][] = []
 
@@ -290,7 +309,15 @@ export function runStrategy(
       // Determine if cooldown has passed
       const cooldownOk = cooldownUntil === null || date > cooldownUntil
       const carryIn = forceEntryFirstDay && idx === 0
-      const doBuy = carryIn || (!isNaN(breadth) && breadth < BUY_B200_THRESH && row.vote_gate && cooldownOk)
+      const washoutBuy = !isNaN(breadth) && breadth < BUY_B200_THRESH && row.vote_gate
+      // Trend re-entry on a fresh MA200 recross (NDX): rejoin when the last exit
+      // was a climax-top or the NDX price is back above the price we last sold at
+      // (market proved the exit premature). Recrosses still below the prior exit
+      // stay filtered as failed bounces in a real downtrend.
+      const recrossOk = lastSellReason === 'climax-top'
+        || (lastExitPrice !== null && ndxPrice > lastExitPrice)
+      const trendBuy  = row.ma200_recross && recrossOk
+      const doBuy = carryIn || (cooldownOk && (washoutBuy || trendBuy))
 
       if (doBuy) {
         const year = dateYear
@@ -413,6 +440,8 @@ export function runStrategy(
         const cooldownDate = new Date(date)
         cooldownDate.setDate(cooldownDate.getDate() + params.cooldown_days)
         cooldownUntil = cooldownDate.toISOString().slice(0, 10)
+        lastSellReason = sellReason
+        lastExitPrice = ndxPrice
 
         trades.push({
           entry_date: entryDate!, exit_date: date,

@@ -145,6 +145,12 @@ def load_tqqq_data() -> pd.DataFrame:
     merged["macd_cross"] = ((hist < 0) & (hist.shift(1) >= 0)).fillna(False)
     merged["ext10"] = (close / close.rolling(10).mean() - 1 >= EXT10_PCT / 100).fillna(False)
 
+    # Trend re-entry: fresh close back above MA200 on the signal series (NDX).
+    merged["ma200_recross"] = (
+        (merged["signal_price"] > merged["ma200"])
+        & (merged["signal_price"].shift(1) <= merged["ma200"].shift(1))
+    ).fillna(False)
+
     return merged
 
 
@@ -188,6 +194,12 @@ def load_qqq_data() -> pd.DataFrame:
     merged["macd_cross"] = ((hist < 0) & (hist.shift(1) >= 0)).fillna(False)
     merged["ext10"] = (close / close.rolling(10).mean() - 1 >= EXT10_PCT / 100).fillna(False)
 
+    # Trend re-entry: fresh close back above MA200 on the signal series (NDX).
+    merged["ma200_recross"] = (
+        (merged["signal_price"] > merged["ma200"])
+        & (merged["signal_price"].shift(1) <= merged["ma200"].shift(1))
+    ).fillna(False)
+
     return merged
 
 
@@ -214,6 +226,8 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, l
     trade_port_low     = 0.0
     trade_port_trough_val = INITIAL_CAPITAL
     cooldown_until: pd.Timestamp | None = None
+    last_sell_reason: str | None = None
+    last_exit_price: float | None = None
     trades: list[dict] = []
     values: dict = {}
 
@@ -228,7 +242,15 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, l
         if position == "OUT":
             vote_gate   = bool(row["vote_gate"])
             cooldown_ok = cooldown_until is None or date > cooldown_until
-            do_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate and cooldown_ok
+            washout_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate
+            # Trend re-entry on a fresh MA200 recross (NDX): rejoin when the last
+            # exit was a climax-top or the signal price is back above the price we
+            # last sold at (market proved the exit premature).
+            sig_now     = row["signal_price"]
+            recross_ok  = last_sell_reason == "climax-top" or (
+                last_exit_price is not None and sig_now > last_exit_price)
+            trend_buy   = bool(row["ma200_recross"]) and recross_ok
+            do_buy = cooldown_ok and (washout_buy or trend_buy)
             if do_buy:
                 portfolio -= COMMISSION
                 eff_entry       = price * (1 + SLIPPAGE)
@@ -279,6 +301,8 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, l
                 port_peak      = max(port_peak, portfolio)
                 port_dd        = trade_port_low
                 cooldown_until = date + pd.Timedelta(days=cooldown_days)
+                last_sell_reason = sell_reason
+                last_exit_price = sig_price
                 trades.append({
                     "entry_date":       entry_date,
                     "exit_date":        date,

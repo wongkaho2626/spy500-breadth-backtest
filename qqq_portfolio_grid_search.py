@@ -156,6 +156,10 @@ def load_data() -> tuple[pd.DataFrame, dict[int, str], dict[str, pd.Series]]:
     bp = merged["breadth"].shift(DIVERGENCE_WINDOW)
     merged["price_rose"]   = ((merged["price"] - pp) / pp * 100 >= DIVERGENCE_PRICE_RISE).fillna(False)
     merged["breadth_fell"] = ((bp - merged["breadth"]) >= DIVERGENCE_BREADTH_FALL).fillna(False)
+    # Trend re-entry: fresh close back above MA200 (gate reduces to "above prior exit").
+    merged["ma200_recross"] = (
+        (merged["price"] > merged["ma200"]) & (merged["price"].shift(1) <= merged["ma200"].shift(1))
+    ).fillna(False)
 
     holdings_df = pd.read_csv(TOP_HOLDINGS_FILE)
     top_holdings: dict[int, str] = {}
@@ -206,6 +210,7 @@ def run_strategy(
     """
     position       = "OUT"
     cooldown_until: pd.Timestamp | None = None
+    last_exit_ndx: float | None = None
     trades: list[dict] = []
     values: dict[pd.Timestamp, float] = {}
 
@@ -230,12 +235,15 @@ def run_strategy(
 
         if position == "OUT":
             cooldown_ok = cooldown_until is None or date > cooldown_until
-            do_buy = (
+            washout_buy = (
                 not pd.isna(breadth)
                 and breadth < BUY_B200_THRESH
                 and bool(row["vote_gate"])
-                and cooldown_ok
             )
+            # Trend re-entry: fresh MA200 recross once NDX is back above the prior exit.
+            trend_buy = bool(row["ma200_recross"]) and (
+                last_exit_ndx is not None and ndx_price > last_exit_ndx)
+            do_buy = cooldown_ok and (washout_buy or trend_buy)
             if do_buy:
                 year         = date.year
                 stock_ticker = top_holdings.get(year) or top_holdings.get(year - 1)
@@ -303,6 +311,7 @@ def run_strategy(
                     "stock_active": stock_active,
                 })
                 cooldown_until = date + pd.Timedelta(days=COOLDOWN_DAYS)
+                last_exit_ndx  = ndx_price
                 position       = "OUT"
                 qqq_shares = stock_shares = 0.0
 

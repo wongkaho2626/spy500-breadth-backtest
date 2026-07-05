@@ -241,6 +241,11 @@ def load_data() -> tuple[pd.DataFrame, dict[int, str], dict[str, pd.Series], pd.
     merged["macd_cross"] = ((hist < 0) & (hist.shift(1) >= 0)).fillna(False)
     merged["ext10"] = (close / close.rolling(10).mean() - 1 >= EXT10_PCT / 100).fillna(False)
 
+    # Trend re-entry: fresh close back above MA200 (NDX signal series).
+    merged["ma200_recross"] = (
+        (close > merged["ma200"]) & (close.shift(1) <= merged["ma200"].shift(1))
+    ).fillna(False)
+
     top_holdings = load_top_holdings()
     unique_tickers = set(top_holdings.values())
 
@@ -279,25 +284,30 @@ def _position_at_date(
     """
     position       = "OUT"
     cooldown_until: pd.Timestamp | None = None
+    last_sell_reason: str | None = None
+    last_exit_price: float | None = None
     holding_ticker: str | None = None
     ndx_high = 0.0
     macd_age = ext_age = 10**9
 
     for date, row in df_pre.iterrows():
         if position == "OUT":
+            ndx_price   = float(row["price"])
             cooldown_ok = cooldown_until is None or date > cooldown_until
             vote_gate   = bool(row["vote_gate"])
-            do_buy = (
+            washout_buy = (
                 not pd.isna(row["breadth"])
                 and row["breadth"] < BUY_B200_THRESH
                 and vote_gate
-                and cooldown_ok
             )
-            if do_buy:
+            recross_ok  = last_sell_reason == "climax-top" or (
+                last_exit_price is not None and ndx_price > last_exit_price)
+            trend_buy   = bool(row["ma200_recross"]) and recross_ok
+            if cooldown_ok and (washout_buy or trend_buy):
                 position = "IN"
                 year           = date.year
                 holding_ticker = top_holdings.get(year) or top_holdings.get(year - 1)
-                ndx_high = float(row["price"])
+                ndx_high = ndx_price
                 macd_age = ext_age = 10**9
         else:
             ndx_price = float(row["price"])
@@ -313,6 +323,9 @@ def _position_at_date(
             if bearish_div or climax or trail_hit:
                 position       = "OUT"
                 holding_ticker = None
+                last_sell_reason = ("bearish-divergence" if bearish_div
+                                    else "climax-top" if climax else "trailing-stop")
+                last_exit_price = ndx_price
                 cooldown_until = date + pd.Timedelta(days=cooldown_days)
 
     return position == "IN", holding_ticker
@@ -347,6 +360,8 @@ def run_strategy(
     position       = "OUT"
     portfolio      = initial_capital
     cooldown_until: pd.Timestamp | None = None
+    last_sell_reason: str | None = None
+    last_exit_price: float | None = None
     trades: list[dict] = []
     values: dict[pd.Timestamp, float] = {}
 
@@ -410,12 +425,17 @@ def run_strategy(
             else:
                 vote_gate   = bool(row["vote_gate"])
                 cooldown_ok = cooldown_until is None or date > cooldown_until
-                do_buy = (
+                washout_buy = (
                     not pd.isna(breadth)
                     and breadth < BUY_B200_THRESH
                     and vote_gate
-                    and cooldown_ok
                 )
+                # Trend re-entry on a fresh MA200 recross (NDX): rejoin when the
+                # last exit was a climax-top or NDX is back above the prior exit.
+                recross_ok  = last_sell_reason == "climax-top" or (
+                    last_exit_price is not None and ndx_price > last_exit_price)
+                trend_buy   = bool(row["ma200_recross"]) and recross_ok
+                do_buy = cooldown_ok and (washout_buy or trend_buy)
                 if do_buy:
                     year         = date.year
                     stock_ticker = top_holdings.get(year) or top_holdings.get(year - 1)
@@ -554,6 +574,8 @@ def run_strategy(
 
                 portfolio      = total_proc
                 cooldown_until = date + pd.Timedelta(days=cooldown_days)
+                last_sell_reason = sell_reason
+                last_exit_price = ndx_price
 
                 def _mdd(low: float, peak: float) -> float:
                     return (low - peak) / peak * 100 if peak > 0 else 0.0
