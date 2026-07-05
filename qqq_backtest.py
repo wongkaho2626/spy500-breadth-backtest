@@ -64,6 +64,15 @@ CLIMAX_VOTE_WINDOW  = 10    # days within which both climax signals must fire
 # ── Sell — trailing stop ──────────────────────────────────────────────────────
 TRAILING_STOP_PCT = 25.0    # % below the high since entry
 
+# ── Execution timing ──────────────────────────────────────────────────────────
+# Signals are computed from end-of-day closes, so the earliest tradeable fill is
+# the NEXT session — you only know the signal once the market has closed.
+# Default: a signal on day t fills at day t+1's OPEN (the realistic assumption).
+# Set EXECUTION_LAG = 0 and FILL_PRICE = "close" for the legacy same-day-close
+# fill (uses look-ahead: it trades at the very close that produced the signal).
+EXECUTION_LAG = 1        # bars between signal and fill (0 = same day, look-ahead)
+FILL_PRICE    = "open"   # "open" or "close" of the fill bar
+
 # ── Shared ────────────────────────────────────────────────────────────────────
 INITIAL_CAPITAL = 10_000.0
 COMMISSION      = 1.0
@@ -80,8 +89,9 @@ def load_data() -> pd.DataFrame:
     ndx = pd.read_csv(NDX_FILE)
     ndx["Date"] = pd.to_datetime(ndx["Date"], format="%m/%d/%Y")
     ndx.set_index("Date", inplace=True)
-    ndx = ndx.rename(columns={"Price": "price"})
+    ndx = ndx.rename(columns={"Price": "price", "Open": "open"})
     ndx["price"] = _parse_price(ndx["price"])
+    ndx["open"]  = _parse_price(ndx["open"])
 
     if BREADTH_DAILY_FILE.exists():
         b200 = pd.read_csv(BREADTH_DAILY_FILE)
@@ -102,7 +112,7 @@ def load_data() -> pd.DataFrame:
     vix.set_index("Date", inplace=True)
     vix["vix"] = _parse_price(vix["Price"])
 
-    merged = ndx[["price"]].join(
+    merged = ndx[["price", "open"]].join(
         b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"
     )
     merged = merged.join(vix[["vix"]], how="left")
@@ -163,11 +173,31 @@ def _days_str(days: int) -> str:
     return f"{days}d"
 
 
-def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, list[dict], dict | None]:
+def run_strategy(df: pd.DataFrame, cooldown_days: int = 0,
+                 execution_lag: int = EXECUTION_LAG,
+                 fill_on: str = FILL_PRICE) -> tuple[pd.Series, list[dict], dict | None]:
+    """
+    Signals are computed on the CLOSE (all indicators are close-based); a signal
+    detected on day t is filled `execution_lag` bars later.
+
+    execution_lag = 0 → same-day fill (legacy; only valid with fill_on="close",
+                        which trades at the very close that produced the signal).
+    execution_lag = 1 → next trading day (realistic).
+    fill_on = "open"  → fill at the fill-bar OPEN (needs lag ≥ 1, else look-ahead).
+    fill_on = "close" → fill at the fill-bar close.
+
+    Marking to market always uses the close. Only the transaction price/timing
+    changes; the signal logic is identical to the same-day version.
+    """
+    if fill_on == "open" and execution_lag < 1:
+        raise ValueError("fill_on='open' requires execution_lag >= 1 (open precedes close)")
+
     position       = "OUT"
     eff_entry      = raw_entry = 0.0
     entry_date     = None
-    trade_low      = 0.0
+    trade_low = trade_high = 0.0
+    macd_age = ext_age = 10**9
+    buy_trigger    = None
     portfolio      = INITIAL_CAPITAL
     cooldown_until: pd.Timestamp | None = None
     last_sell_reason: str | None = None
@@ -175,84 +205,125 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0) -> tuple[pd.Series, l
     trades: list[dict] = []
     values: dict = {}
 
-    for date, row in df.iterrows():
-        price        = row["price"]
+    # A signal sets a pending order (action + the bar index it fills on); the
+    # order executes when that bar arrives, at that bar's fill price.
+    pending: dict | None = None
+    rows = list(df.iterrows())
+    n = len(rows)
+
+    def execute_due(i, date, fill_price):
+        """Fill a pending order whose fill bar is today, at fill_price. True if filled."""
+        nonlocal position, eff_entry, raw_entry, entry_date, trade_low, trade_high
+        nonlocal macd_age, ext_age, buy_trigger, portfolio, cooldown_until
+        nonlocal last_sell_reason, last_exit_price, pending
+        if pending is None or pending["fill_at"] != i:
+            return False
+        if pending["action"] == "BUY" and position == "OUT":
+            portfolio -= COMMISSION
+            eff_entry  = fill_price * (1 + SLIPPAGE)
+            raw_entry  = fill_price
+            entry_date = date
+            trade_low  = trade_high = fill_price
+            macd_age = ext_age = 10**9   # climax ages reset (days since firing AFTER entry)
+            buy_trigger = pending["trigger"]
+            position = "IN"
+            pending = None
+            return True
+        if pending["action"] == "SELL" and position == "IN":
+            eff_exit  = fill_price * (1 - SLIPPAGE)
+            gross_ret = (eff_exit - eff_entry) / eff_entry
+            portfolio *= (1 + gross_ret)
+            portfolio -= COMMISSION
+            cooldown_until   = date + pd.Timedelta(days=cooldown_days)
+            last_sell_reason = pending["reason"]
+            last_exit_price  = fill_price
+            trades.append({
+                "entry_date":       entry_date,
+                "exit_date":        date,
+                "entry_price":      raw_entry,
+                "exit_price":       fill_price,
+                "return_pct":       gross_ret * 100,
+                "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
+                "accumulated":      portfolio,
+                "buy_trigger":      buy_trigger,
+                "sell_reason":      pending["reason"],
+                "cooldown_until":   cooldown_until,
+            })
+            position = "OUT"
+            pending = None
+            return True
+        pending = None
+        return False
+
+    for i in range(n):
+        date, row = rows[i]
+        price        = row["price"]          # close: drives signals + mark-to-market
         breadth      = row["breadth"]
         price_rose   = bool(row["price_rose"])
         breadth_fell = bool(row["breadth_fell"])
+        if fill_on == "open" and not pd.isna(row["open"]):
+            fill_price = row["open"]         # fill-bar open (fall back to close if missing)
+        else:
+            fill_price = price
 
-        if position == "OUT":
-            vote_gate      = bool(row["vote_gate"])
-            cooldown_ok    = cooldown_until is None or date > cooldown_until
-            washout_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate
-            # Trend re-entry: on a fresh MA200 recross, rejoin the trend when
-            # either
-            #   • the last exit was a climax-top (a premature "froth" shakeout a
-            #     bull recovers from), or
-            #   • price is back above the price we last sold at — the market has
-            #     proven the exit premature by trading higher (e.g. the false
-            #     2004 divergence that preceded the 2004–07 run).
-            # Recrosses that are still below the prior exit stay filtered: those
-            # are failed bounces in a real downtrend (e.g. the 2022 whipsaws).
-            recross_ok = last_sell_reason == "climax-top" or (
-                last_exit_price is not None and price > last_exit_price)
-            trend_buy   = bool(row["ma200_recross"]) and recross_ok
-            do_buy = cooldown_ok and (washout_buy or trend_buy)
-            if do_buy:
-                portfolio -= COMMISSION
-                eff_entry  = price * (1 + SLIPPAGE)
-                raw_entry  = price
-                entry_date = date
-                trade_low  = price
-                trade_high = price
-                # climax signal ages (days since firing AFTER entry); start "stale"
-                macd_age = ext_age = 10**9
-                position   = "IN"
-                if washout_buy:
-                    buy_trigger = (("VIX" if row["vix_vote"] else "") +
+        # 1) Execute an order that came due today (set on an earlier bar).
+        executed = execute_due(i, date, fill_price)
+
+        # 2) Evaluate signals on today's close → schedule the fill. Skip on a bar
+        #    we just filled, mirroring the same-day loop (entry bar does no sell
+        #    check; exit bar does no buy check).
+        if not executed and pending is None:
+            if position == "OUT":
+                vote_gate      = bool(row["vote_gate"])
+                cooldown_ok    = cooldown_until is None or date > cooldown_until
+                washout_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate
+                # Trend re-entry: on a fresh MA200 recross, rejoin the trend when
+                # either
+                #   • the last exit was a climax-top (a premature "froth" shakeout a
+                #     bull recovers from), or
+                #   • price is back above the price we last sold at — the market has
+                #     proven the exit premature by trading higher (e.g. the false
+                #     2004 divergence that preceded the 2004–07 run).
+                # Recrosses that are still below the prior exit stay filtered: those
+                # are failed bounces in a real downtrend (e.g. the 2022 whipsaws).
+                recross_ok = last_sell_reason == "climax-top" or (
+                    last_exit_price is not None and price > last_exit_price)
+                trend_buy   = bool(row["ma200_recross"]) and recross_ok
+                do_buy = cooldown_ok and (washout_buy or trend_buy)
+                if do_buy and i + execution_lag < n:
+                    if washout_buy:
+                        trigger = (("VIX" if row["vix_vote"] else "") +
                                    ("+" if row["vix_vote"] and row["ma200_vote"] else "") +
                                    ("MA200" if row["ma200_vote"] else ""))
+                    else:
+                        trigger = "MA200-recross"
+                    pending = {"action": "BUY", "fill_at": i + execution_lag,
+                               "trigger": trigger}
+
+            elif position == "IN":
+                trade_low  = min(trade_low, price)
+                trade_high = max(trade_high, price)
+                macd_age = 0 if bool(row["macd_cross"]) else macd_age + 1
+                ext_age  = 0 if bool(row["ext10"])      else ext_age + 1
+                bearish_div = price_rose and breadth_fell and breadth < DIVERGENCE_BREADTH_CAP
+                climax      = (macd_age < CLIMAX_VOTE_WINDOW) and (ext_age < CLIMAX_VOTE_WINDOW)
+                trail_hit   = price <= trade_high * (1 - TRAILING_STOP_PCT / 100)
+                if bearish_div:
+                    reason = "bearish-divergence"
+                elif climax:
+                    reason = "climax-top"
+                elif trail_hit:
+                    reason = "trailing-stop"
                 else:
-                    buy_trigger = "MA200-recross"
+                    reason = None
+                if reason and i + execution_lag < n:
+                    pending = {"action": "SELL", "fill_at": i + execution_lag,
+                               "reason": reason}
 
-        elif position == "IN":
-            trade_low  = min(trade_low, price)
-            trade_high = max(trade_high, price)
-            macd_age = 0 if bool(row["macd_cross"]) else macd_age + 1
-            ext_age  = 0 if bool(row["ext10"])      else ext_age + 1
-            bearish_div = price_rose and breadth_fell and breadth < DIVERGENCE_BREADTH_CAP
-            climax      = (macd_age < CLIMAX_VOTE_WINDOW) and (ext_age < CLIMAX_VOTE_WINDOW)
-            trail_hit   = price <= trade_high * (1 - TRAILING_STOP_PCT / 100)
-            if bearish_div:
-                sell_reason = "bearish-divergence"
-            elif climax:
-                sell_reason = "climax-top"
-            elif trail_hit:
-                sell_reason = "trailing-stop"
-            else:
-                sell_reason = None
-            if sell_reason:
-                eff_exit  = price * (1 - SLIPPAGE)
-                gross_ret = (eff_exit - eff_entry) / eff_entry
-                portfolio *= (1 + gross_ret)
-                portfolio -= COMMISSION
-                cooldown_until = date + pd.Timedelta(days=cooldown_days)
-                last_sell_reason = sell_reason
-                last_exit_price = price
-                trades.append({
-                    "entry_date":       entry_date,
-                    "exit_date":        date,
-                    "entry_price":      raw_entry,
-                    "exit_price":       price,
-                    "return_pct":       gross_ret * 100,
-                    "max_drawdown_pct": (trade_low - raw_entry) / raw_entry * 100,
-                    "accumulated":      portfolio,
-                    "buy_trigger":      buy_trigger,
-                    "sell_reason":      sell_reason,
-                    "cooldown_until":   cooldown_until,
-                })
-                position = "OUT"
+            # Same-day execution (lag 0): the order just set is due this bar.
+            executed = execute_due(i, date, fill_price)
 
+        # 3) Mark to market at end of day on the resulting position.
         if position == "IN":
             values[date] = portfolio * (price * (1 - SLIPPAGE) / eff_entry)
         else:
@@ -498,7 +569,23 @@ def main() -> None:
                         metavar="YEAR", help="First year to include in the backtest (default: full history)")
     parser.add_argument("--cooldown-days", type=int, default=COOLDOWN_DAYS,
                         metavar="DAYS", help="Calendar-day cooldown after a sell before next buy (default: %(default)s)")
+    parser.add_argument("--fill", choices=["next-open", "next-close", "same-close"],
+                        default=None,
+                        help="Execution model: next-open (default, realistic), next-close, "
+                             "or same-close (legacy look-ahead fill)")
     args = parser.parse_args()
+
+    lag, fill_on = EXECUTION_LAG, FILL_PRICE
+    if args.fill == "next-open":
+        lag, fill_on = 1, "open"
+    elif args.fill == "next-close":
+        lag, fill_on = 1, "close"
+    elif args.fill == "same-close":
+        lag, fill_on = 0, "close"
+    fill_desc = {("1", "open"): "next trading day's OPEN (realistic)",
+                 ("1", "close"): "next trading day's CLOSE",
+                 ("0", "close"): "same-day CLOSE (legacy look-ahead)"}.get(
+                    (str(lag), fill_on), f"lag {lag} / {fill_on}")
 
     print("Loading data...")
     df = load_data()
@@ -516,9 +603,11 @@ def main() -> None:
     print(f"           OR trailing stop: {TRAILING_STOP_PCT:.0f}% below high since entry")
     print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")
     print(f"Cooldown    : {args.cooldown_days} calendar days after each sell")
+    print(f"Execution   : fill at {fill_desc}")
 
     benchmark                    = run_benchmark(df)
-    strategy, trades, open_trade = run_strategy(df, cooldown_days=args.cooldown_days)
+    strategy, trades, open_trade = run_strategy(df, cooldown_days=args.cooldown_days,
+                                                execution_lag=lag, fill_on=fill_on)
 
     print_metrics(
         compute_metrics(strategy, trades),
