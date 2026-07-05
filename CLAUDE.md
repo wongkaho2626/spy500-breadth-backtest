@@ -55,6 +55,17 @@ or `"OUT"`, driven by these rules (see `qqq_backtest.py` for the canonical, best
 **Costs**: `$1` flat commission + `0.05%` slippage per side, applied to the effective entry/exit
 price (in all the current scripts; the older no-cost variants have been removed).
 
+**Execution timing**: signals come from end-of-day closes, so they are only known after the
+session closes. All trading backtests therefore fill orders at the **next trading day's open**
+by default (`EXECUTION_LAG = 1`, `FILL_PRICE = "open"` — constants near the top of each script).
+The legacy same-day-close fill (a look-ahead: it trades at the very close that produced the
+signal) stays available via `EXECUTION_LAG = 0` / `FILL_PRICE = "close"`, or `--fill same-close`
+on `qqq_backtest.py` / `qqq_portfolio_backtest.py` (choices: `next-open` | `next-close` |
+`same-close`). Signals and mark-to-market always stay on closes; only the transaction
+price/timing changes. Measured lag cost on `qqq_backtest.py` (2002–2026): next-open ≈ −0.3 pts
+CAGR vs same-close (Sharpe unchanged 1.12); next-close ≈ −1.8 pts. Legs without an Open column
+in their data (e.g. the web app's TQQQ/SPY/SOXX CSVs) fall back to the fill-day close.
+
 The signal is computed on a "signal index" (NDX for the QQQ family, SPX for SPY, SOXX for the
 semiconductor variant) and then applied to whatever asset(s) the script actually trades.
 
@@ -154,6 +165,7 @@ canonical values (`qqq_backtest.py` / `qqq_portfolio_backtest.py` and the web ap
 | `EXT10_PCT` / `CLIMAX_VOTE_WINDOW` | 5.0% / 10 | Climax-top exit |
 | `TRAILING_STOP_PCT` | 25.0% | Trailing stop from post-entry high |
 | `COMMISSION` / `SLIPPAGE` | $1 / 0.05% | Per-side transaction costs |
+| `EXECUTION_LAG` / `FILL_PRICE` | 1 / `"open"` | Fill signals at the next day's open (0/`"close"` = legacy same-day look-ahead) |
 
 SPY and SOXX variants share these; `qqq_backtest.py`'s own copies live at the top of that file.
 
@@ -175,7 +187,9 @@ npm run build     # static export → webapp/nextjs/out/
 ### Architecture
 - **`app/page.tsx`** — main page; sidebar + tabbed charts / metrics / trade log / sell-signal panel
 - **`lib/backtest.ts`** — TypeScript port of the Python portfolio engine; the constants block at
-  the top mirrors `qqq_portfolio_backtest.py` and **must be kept in sync** with the Python side
+  the top mirrors `qqq_portfolio_backtest.py` and **must be kept in sync** with the Python side.
+  Includes the execution model (`FillMode`: `next-open` default | `next-close` | `same-close`);
+  the Sidebar exposes it as an "Order Execution" selector
 - **`lib/loadData.ts`** — fetches CSVs from `public/data/` at runtime
 - **`lib/types.ts` / `lib/utils.ts`** — shared types and formatting helpers
 - **`components/`** — `Sidebar` (parameters), `MetricCards`, `SellSignalPanel`, and Chart.js charts
