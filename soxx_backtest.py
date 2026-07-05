@@ -116,6 +116,11 @@ def load_data() -> pd.DataFrame:
     merged["macd_cross"] = ((hist < 0) & (hist.shift(1) >= 0)).fillna(False)
     merged["ext10"] = (close / close.rolling(10).mean() - 1 >= EXT10_PCT / 100).fillna(False)
 
+    # Trend re-entry: fresh close back above MA200 (see run_strategy for the gate).
+    merged["ma200_recross"] = (
+        (close > merged["ma200"]) & (close.shift(1) <= merged["ma200"].shift(1))
+    ).fillna(False)
+
     return merged
 
 
@@ -139,6 +144,8 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
     macd_age   = ext_age = 10**9
     portfolio  = INITIAL_CAPITAL
     cooldown_until: pd.Timestamp | None = None
+    last_sell_reason: str | None = None
+    last_exit_price: float | None = None
     trades: list[dict] = []
     values: dict = {}
 
@@ -150,8 +157,15 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
 
         if position == "OUT":
             cooldown_ok = cooldown_until is None or date > cooldown_until
-            if (not pd.isna(breadth) and breadth < BUY_B200_THRESH
-                    and bool(row["vote_gate"]) and cooldown_ok):
+            washout_buy = (not pd.isna(breadth) and breadth < BUY_B200_THRESH
+                           and bool(row["vote_gate"]))
+            # Trend re-entry on a fresh MA200 recross: rejoin when the last exit
+            # was a climax-top (a premature froth shakeout) or price is back above
+            # the price we last sold at (market proved the exit premature).
+            recross_ok  = last_sell_reason == "climax-top" or (
+                last_exit_price is not None and price > last_exit_price)
+            trend_buy   = bool(row["ma200_recross"]) and recross_ok
+            if cooldown_ok and (washout_buy or trend_buy):
                 portfolio -= COMMISSION
                 eff_entry  = price * (1 + SLIPPAGE)
                 raw_entry  = price
@@ -185,6 +199,8 @@ def run_strategy(df: pd.DataFrame) -> tuple[pd.Series, list[dict], dict | None]:
                 portfolio *= (1 + gross_ret)
                 portfolio -= COMMISSION
                 cooldown_until = date + pd.Timedelta(days=COOLDOWN_DAYS)
+                last_sell_reason = sell_reason
+                last_exit_price = price
                 trades.append({
                     "entry_date":       entry_date,
                     "exit_date":        date,
