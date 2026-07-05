@@ -2,116 +2,226 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Running the Scripts
+## What this repo is
+
+A market-timing **backtesting playground** for NASDAQ-heavy portfolios (QQQ, TQQQ, the #1
+NASDAQ-100 stock, SPY, SOXX). Every strategy is driven by the same core signal: the **S&P 500
+breadth indicator** — the percentage of S&P 500 stocks trading above their 200-day moving
+average. The repo ships both a Python CLI (many standalone scripts) and an interactive static
+web app (`webapp/nextjs/`) that runs the same logic in the browser and deploys to GitHub Pages.
+
+> **Repo name is historical.** It began as an S&P 500 breadth study (hence
+> `spy500-breadth-backtest`) but has since centred on QQQ / NASDAQ-100. The README titles it
+> "QQQ Portfolio Backtest."
+
+## Environment & dependencies
+
+No `requirements.txt`, no package structure, no test suite. Scripts are standalone and read CSVs
+from the repo root. Install the third-party libraries directly:
 
 ```bash
-# Run the Seeking Alpha annual picks backtest (uses seeking_alpha.csv + market indicator CSVs)
-python seeking_alpha_backtest.py
-
-# Run the original S&P 500 breadth strategy (uses S&P 500 Historical Data.csv)
-python backtest.py
-
-# Run the SPY ETF backtest (uses SPY ETF Stock Price History.csv)
-python spy_backtest.py
-
-# Run the QQQ ETF backtest (uses QQQ ETF Stock Price History.csv)
-python qqq_backtest.py
-
-# Grid-search parameter optimization for SPY
-python spy_optimize.py
-
-# Grid-search parameter optimization for QQQ
-python qqq_optimize.py
+pip install pandas numpy matplotlib scipy yfinance playwright
 ```
 
-Each backtest script prints a metrics table and trade log to stdout, and saves a chart PNG in the same directory.
+- **pandas / numpy** — used by nearly every script
+- **matplotlib** — chart PNGs (saved next to the script; `.png` is gitignored except `docs/*.png`)
+- **scipy** — statistics in the validation/research scripts (`qqq_validation.py`, `qqq_walkforward.py`, etc.)
+- **yfinance** — live price fetches for TQQQ and NDX top-stock CSVs (`tqqq_backtest.py`, `qqq_portfolio_backtest.py`, `ndx_top1_backtest.py`, `combined_t5n25q70.py`, `sa_qqq_backtest.py`)
+- **playwright** — Cloudflare-bypassing scraper in `fetch_investing_data.py` (`playwright install` needed once)
 
-## Architecture
+## The core strategy (shared signal logic)
 
-Standalone Python backtesting project — no package structure, no tests, no dependencies file. All scripts are self-contained and read CSV data from the same directory.
+All the "backtest" scripts implement the same signal state machine — a `position` that is `"IN"`
+or `"OUT"`, driven by these rules (see `qqq_backtest.py` for the canonical, best-documented copy):
 
-**Data pipeline** (each script does this independently):
-1. `load_data()` — reads two CSVs (price history + breadth), parses comma-formatted prices, joins on Date index, computes `bearish_div` boolean column inline
-2. `run_strategy()` — single-pass loop over rows, simulates trades with a `portfolio` float and `position` state machine (`"IN"` / `"OUT"`)
-3. `run_benchmark()` — simple buy-and-hold normalised to `INITIAL_CAPITAL`
-4. `compute_metrics()` / `print_metrics()` / `print_trades()` / `plot_results()` — reporting layer
+**BUY (while OUT)** — two entry paths:
+- **Washout**: breadth < 26% AND a vote gate passes — either VIX > 30 (fear spike) OR price > its
+  own 200-day MA (an uptrend pullback, safe to buy immediately). The vote gate avoids buying into
+  a structurally broken downtrend.
+- **Trend re-entry** (newest addition): price closes back above its MA200 (a fresh cross),
+  allowed only when EITHER the previous exit was a "climax top" (a premature froth shakeout) OR
+  price is back above the level we last sold at (the market proved the exit premature). Recrosses
+  still below the prior exit stay filtered out — that rejects failed bounces in a real downtrend
+  (e.g. the 2022 whipsaws) while catching real recoveries (e.g. after the false 2004 divergence).
+- A **cooldown** (default 15–30 days, configurable) must have elapsed since the last exit.
 
-**Signal logic** (shared across all scripts):
-- **Buy trigger**: `breadth < BUY_THRESHOLD` while out of market
-- **Sell trigger**: bearish divergence — price rose ≥ `DIVERGENCE_PRICE_RISE`% over `DIVERGENCE_WINDOW` days while breadth fell ≥ `DIVERGENCE_BREADTH_FALL` pts AND breadth is below `DIVERGENCE_BREADTH_CAP`
-- `qqq_backtest.py` adds a **trailing stop** (`TRAILING_STOP_PCT = 30%`) as a second exit condition
+**SELL (while IN)** — any of:
+- **Bearish divergence**: price rose ≥ 3% over a 60-day window while breadth fell ≥ 20 pts AND
+  breadth is currently < 60%. Flags a narrowing rally carried by a shrinking set of leaders.
+- **Climax top**: within 10 days, price was extended ≥ 5% above its 10-day MA AND MACD(12,26,9)
+  flipped bearish.
+- **Trailing stop**: price 25% below the high since entry.
 
-**Costs** (`spy_backtest.py` and `qqq_backtest.py` only): `$1` flat commission + `0.05%` slippage per side applied to effective entry/exit price. `backtest.py` has no cost model.
+**Costs**: `$1` flat commission + `0.05%` slippage per side, applied to the effective entry/exit
+price (in all the current scripts; the older no-cost variants have been removed).
 
-**Optimization scripts** (`spy_optimize.py`, `qqq_optimize.py`): brute-force grid search over ~14,000 parameter combinations using `itertools.product`. Results ranked by Total Return and Sharpe Ratio.
+The signal is computed on a "signal index" (NDX for the QQQ family, SPX for SPY, SOXX for the
+semiconductor variant) and then applied to whatever asset(s) the script actually trades.
 
-## Key Constants (tunable per script)
+## Data pipeline — the breadth series
 
-| Constant | backtest.py | spy_backtest.py | qqq_backtest.py |
+The breadth input has a historical trap worth knowing:
+
+- **`S5TH.csv`** (% of S&P 500 above 200-day MA) is only *daily from 2007*. Before that it is
+  bimonthly, which silently corrupts any row-based lookback window (a "60-day" window would span
+  ~10 years of sparse points).
+- **`build_breadth_daily.py`** fixes this: it fits a linear map `S5TH ≈ a + b·MMTH` on the 2007+
+  overlap (MMTH is a broader-universe daily series back to 2002, ~0.94 correlated), applies it to
+  2002–2006, and splices the two into **`breadth_daily.csv`** (columns: `Date`, `breadth`,
+  `source`). Newer scripts read `breadth_daily.csv` for a clean continuous 2002+ series; older
+  ones read `S5TH.csv` directly. **Rebuild `breadth_daily.csv` whenever `S5TH.csv` or `MMTH.csv`
+  changes.**
+
+Fetch/refresh helpers:
+- **`fetch_investing_data.py`** — Playwright scraper for `NASDAQ100.csv`, `S5TH.csv`, `SPX.csv`
+  from investing.com (bypasses Cloudflare).
+- **`fetch_sector_data.py`** — SPDR sector ETF history (`XL*.csv`) from Yahoo Finance.
+- **`sector_indicator.py`** — sector performance/rotation/breadth report (run `fetch_sector_data.py` first).
+
+## Script catalogue
+
+Run any script with `python <name>.py`. Each prints a metrics table + trade log to stdout and
+saves a chart PNG (and some export `*_results.csv` / `*_metrics.csv` files). Grouped by purpose:
+
+### Single-asset breadth backtests (the canonical strategy applied to one instrument)
+| Script | Trades | Signal index | Notes |
 |---|---|---|---|
-| `BUY_THRESHOLD` | 18.0 | 18.0 | 26.0 |
-| `DIVERGENCE_WINDOW` | 100 days | 100 days | 60 days |
-| `DIVERGENCE_PRICE_RISE` | 1.0% | 1.0% | 3.0% |
-| `DIVERGENCE_BREADTH_FALL` | 20 pts | 20 pts | 20 pts |
-| `DIVERGENCE_BREADTH_CAP` | 55.0 | 55.0 | 60.0 |
-| `TRAILING_STOP_PCT` | — | — | 30.0% |
+| `qqq_backtest.py` | QQQ / NDX | NDX | **Canonical, best-documented implementation** |
+| `spy_backtest.py` | SPX | SPX | Same signals on the S&P 500 |
+| `soxx_backtest.py` | SOXX | SOXX | Semiconductor ETF |
+| `tqqq_backtest.py` | TQQQ (3× NDX) | NDX | Price fetched via yfinance (2010+) |
+| `qqq_pct200_backtest.py` | QQQ | NDX | Pure "% above 200-day" entry, no vote gate |
 
-## Seeking Alpha Backtest (`seeking_alpha_backtest.py`)
+### Concentrated single-stock
+| Script | Notes |
+|---|---|
+| `ndx_top1_backtest.py` | Buys the single #1 NDX holding each year (from `nasdaq100_top_holdings.csv`), annual rebalance |
+| `nasdaq100_top2_backtest.py` | Same idea, top-2 basket variant |
 
-Compares three annual stock-picking strategies using 10 Seeking Alpha picks/year:
+### Multi-asset / portfolio backtests
+| Script | Allocation |
+|---|---|
+| `qqq_portfolio_backtest.py` | 60% QQQ / 30% NDX top-1 / 10% TQQQ (canonical portfolio engine; the web app mirrors this) |
+| `combined_n30q70.py` | 30% NDX top-1 / 70% QQQ, proportional DCA, no rebalance |
+| `combined_rebalance_n30q70.py` | Same weights, rebalance variant |
+| `combined_t5n25q70.py` | 5% TQQQ / 25% NDX top-1 / 70% QQQ, rebalanced at each entry |
+| `stock30spy40soxx30_dca_rolling.py` | Rolling-window DCA over 30% NDX top-1 / 40% SPY / 30% SOXX |
 
-| Strategy | Entry | Exit |
+### Grid searches & sweeps (write `*_results.csv`)
+| Script | Explores |
+|---|---|
+| `qqq_portfolio_grid_search.py` | QQQ/stock 2-asset allocation grid |
+| `qqq_portfolio_combo_search.py` | Full 5-asset weight grid (cheap linear-blend trick) |
+| `qqq_ndx_top1_sweep.py` | Rolling-window stats for QQQ↔NDX-top-1 mixes |
+| `qqq_ndx_topN_sweep.py` | Extended sweep, top-1/2/3 baskets, non-overlapping-window significance |
+| `qqq_signal_combo_search.py` | All 255 subsets of the 8 bearish exit signals × vote threshold |
+
+### Research / validation / robustness (many use scipy)
+| Script | Purpose |
+|---|---|
+| `qqq_validation.py` | Daily-return t-stat / PSR, parameter-sensitivity map, Monte Carlo |
+| `qqq_walkforward.py` | Walk-forward optimize/freeze + cross-asset (SPX, Russell 3000) |
+| `qqq_improve.py` | Walk-forward tests of trailing-stop / breadth-floor / tiered-entry / trend-reentry upgrades |
+| `qqq_indicator_scan.py` | Adds every unused CSV indicator (HY spread, A/D line, 10Y, RSI…) as a candidate gate/exit |
+| `qqq_upgrades_test.py` | Execution-lag, total-return (adjusted prices), ensemble divergence, partial exits |
+| `qqq_bearish_composite.py` | Codes 8 classic bearish technicals, exits when ≥N fire in 10 days |
+| `qqq_dd_throttle.py` | Drawdown-based position-throttle overlay |
+| `qqq_sector_experiment.py` | Layers sector-ETF filters (sector breadth, XLY/XLP regime, defensive rotation) |
+
+### Seeking Alpha
+| Script | Purpose |
+|---|---|
+| `sa_qqq_backtest.py` | Applies QQQ breadth-timing to annual Seeking Alpha 10-pick cohorts (2022–2026); four strategies A–D |
+
+**Walk-forward discipline** is used throughout the search/research scripts: parameters are chosen
+on one half of 2002–2013 / 2014–2026 (by Sharpe) and reported on the *other* half only. In-sample
+"winners" from these grids are overfit by construction — trust the OOS rows.
+
+## Key constants
+
+The tunable parameters live as module-level constants near the top of each script. The current
+canonical values (`qqq_backtest.py` / `qqq_portfolio_backtest.py` and the web app):
+
+| Constant | Value | Meaning |
 |---|---|---|
-| A (baseline) | Jan 1 every year | Dec 31 every year |
-| B (PE filter) | First day S&P 500 fwd PE < 20 | Dec 31 |
-| C (enhanced) | PE<20 OR (VIX≥22 AND breadth≤50); fallback Jan 1 | SPX bearish-div OR trailing-stop(-25%) OR year-end |
+| `BUY_B200_THRESH` | 26.0 | Breadth washout entry threshold |
+| `VIX_BUY_THRESH` | 30.0 | VIX vote for entry |
+| `MA200_WINDOW` | 200 | Moving-average window for the trend vote / re-entry |
+| `DIVERGENCE_WINDOW` | 60 | Lookback for the bearish-divergence exit |
+| `DIVERGENCE_PRICE_RISE` | 3.0% | Price-rise leg of divergence |
+| `DIVERGENCE_BREADTH_FALL` | 20 pts | Breadth-fall leg of divergence |
+| `DIVERGENCE_BREADTH_CAP` | 60.0 | Divergence ignored above this breadth |
+| `EXT10_PCT` / `CLIMAX_VOTE_WINDOW` | 5.0% / 10 | Climax-top exit |
+| `TRAILING_STOP_PCT` | 25.0% | Trailing stop from post-entry high |
+| `COMMISSION` / `SLIPPAGE` | $1 / 0.05% | Per-side transaction costs |
 
-**Key parameters:**
-- `FWD_PE_BUY = 20.0` — primary S&P 500 forward PE entry threshold
-- `VIX_ALT_THRESH = 22.0`, `BREADTH_ALT_THRESH = 50.0` — alt-entry (fear + oversold)
-- `DIV_WINDOW = 60`, `DIV_PRICE_RISE = 5.0%`, `DIV_BREADTH_FALL = 20 pts`, `DIV_BREADTH_CAP = 60.0` — bearish divergence exit parameters
-- `TRAILING_STOP_PCT = 25.0` — trailing stop for Strategy C
+SPY and SOXX variants share these; `qqq_backtest.py`'s own copies live at the top of that file.
 
-**Data files used:** `seeking_alpha.csv`, `SPX.csv`, `S&P500ForwardPE.csv`, `S5TH.csv`, `VIX.csv`
+## Static Web App (`webapp/nextjs/`)
 
-Entry prices for non-CSV dates are estimated via SPX beta=1 proxy. Year-end exits use actual CSV stock prices.
+A client-side Next.js app that runs the **`qqq_portfolio_backtest.py`** logic entirely in the
+browser — no server. It is a **static export** deployed to GitHub Pages.
 
-## Static Web App (Next.js)
-
-A client-side backtest UI lives in `webapp/nextjs/`. It runs the same strategy logic in the browser — no server required — and is deployed to GitHub Pages on every push to `main`.
-
-**Live URL:** `https://<github-user>.github.io/spy500-breadth-backtest/`
+**Live URL:** `https://wongkaho2626.github.io/spy500-breadth-backtest/`
 
 ### Local development
-
 ```bash
 cd webapp/nextjs
 npm install
-npm run dev       # dev server at http://localhost:3000/spy500-breadth-backtest
+npm run dev       # http://localhost:3000/spy500-breadth-backtest
 npm run build     # static export → webapp/nextjs/out/
 ```
 
 ### Architecture
-
-- **`app/page.tsx`** — main page; orchestrates sidebar, charts, metrics, and trade log tabs
-- **`lib/backtest.ts`** — TypeScript port of the Python backtest engine (same signal logic)
-- **`lib/loadData.ts`** — fetches CSV data files from `public/data/` at runtime
-- **`components/`** — Sidebar (parameters), MetricCards, SellSignalPanel, and Recharts-based chart components
+- **`app/page.tsx`** — main page; sidebar + tabbed charts / metrics / trade log / sell-signal panel
+- **`lib/backtest.ts`** — TypeScript port of the Python portfolio engine; the constants block at
+  the top mirrors `qqq_portfolio_backtest.py` and **must be kept in sync** with the Python side
+- **`lib/loadData.ts`** — fetches CSVs from `public/data/` at runtime
+- **`lib/types.ts` / `lib/utils.ts`** — shared types and formatting helpers
+- **`components/`** — `Sidebar` (parameters), `MetricCards`, `SellSignalPanel`, and Chart.js charts
+  under `components/charts/` (`GrowthChart`, `AnnualChart`, `DrawdownChart`, `SignalsChart`)
+- **Charting:** Chart.js via `react-chartjs-2` (not Recharts)
 - **`next.config.mjs`** — `output: 'export'`, `basePath: '/spy500-breadth-backtest'` for GitHub Pages
 
+### Data for the web app
+The app fetches its own copies from **`webapp/nextjs/public/data/`**:
+`breadth_daily.csv`, `NASDAQ100.csv`, `S5TH.csv`, `VIX.csv`, `nasdaq100_top10_holdings.csv`, and
+`stock_prices/*.csv`. When the root CSVs change, **copy the relevant files into `public/data/`**
+or the static build will serve stale data.
+
 ### Deployment
+`.github/workflows/deploy.yml` builds the app and deploys `out/` to GitHub Pages on every push to
+`main` (and via `workflow_dispatch`). Uses **Node 24** with npm caching. There is no test/lint CI.
 
-`.github/workflows/deploy.yml` builds the Next.js app and deploys the `out/` directory to GitHub Pages on every push to `main`. The workflow uses Node 20 and caches `npm` dependencies.
+## CSV data reference
 
-Data CSVs must be present in `webapp/nextjs/public/data/` for the static build to serve them correctly.
+All CSVs use `MM/DD/YYYY` dates and comma-formatted prices (e.g. `"1,234.56"`); the `_parse_price()`
+helper in each script strips commas before casting. Price CSVs follow the investing.com column
+layout: `Date, Price, Open, High, Low, Vol., Change %`.
 
-## CSV Data Files
+**Price / index series:** `NASDAQ100.csv` (NDX, the QQQ proxy), `SPX.csv`, `SOXX.csv`,
+`Russell3000.csv`, `VIX.csv`, `US10Y.csv`, and the 11 SPDR sector ETFs `XLB/XLC/XLE/XLF/XLI/XLK/XLP/XLRE/XLU/XLV/XLY.csv`.
 
-All CSVs use `MM/DD/YYYY` date format and comma-formatted prices (e.g. `"1,234.56"`). The `_parse_price()` helper strips commas before casting to float.
+**Breadth / market internals:** `S5TH.csv` (% S&P 500 above 200-day MA — daily 2007+),
+`MMTH.csv` (broader universe, daily 2002+), `S5OH.csv` (% above 100-day MA), `breadth_daily.csv`
+(spliced continuous series), `ADV.csv` / `DECL.csv` (advancers/decliners), `MAHN.csv` / `MALN.csv`
+(new highs/lows), `UCHG.csv` (unchanged).
 
-- `S&P 500 Historical Data.csv` — used by `backtest.py` as SPY proxy
-- `SPY ETF Stock Price History.csv` — used by `spy_backtest.py` and `spy_optimize.py`
-- `QQQ ETF Stock Price History.csv` — used by `qqq_backtest.py` and `qqq_optimize.py`
-- `S&P 500 Stocks Above 200-Day Average Historical Data.csv` — breadth indicator (% of S&P 500 stocks above 200-day MA), used by all scripts
-- `seeking_alpha.csv` — annual Seeking Alpha 10-pick cohorts (2022–2026), used by `seeking_alpha_backtest.py`
-- `SPX.csv`, `S&P500ForwardPE.csv`, `S5TH.csv`, `VIX.csv` — market data for `seeking_alpha_backtest.py`
+**Valuation / macro:** `S&P500ForwardPE.csv`, `ShillerPE.csv`, `BAMLH0A0HYM2.csv` (HY credit
+spread), `us_ppi_yoy.csv`.
+
+**NDX holdings & constituents:** `NASDAQ100/` holds annual PDFs, `nasdaq100_top_holdings.csv` /
+`nasdaq100_top10_holdings.csv`, and `NASDAQ100/stock_prices/*.csv` (per-stock price history used
+by the top-1/portfolio backtests).
+
+**Generated outputs** (checked in): `*_results.csv` (sweeps), `*_metrics.csv` and per-leg trade
+logs from the `combined_*` scripts, `*_dca_rolling.csv`, `tqqq_rolling_forecast.csv`.
+
+## Conventions & gotchas
+
+- **`.png` charts are gitignored** (except `docs/*.png`, e.g. `docs/screenshot.png` used in the README).
+- **Keep `lib/backtest.ts` constants in sync** with the Python portfolio engine when tuning.
+- **Copy updated CSVs into `webapp/nextjs/public/data/`** — the app does not read the repo root.
+- **Rebuild `breadth_daily.csv`** after refreshing `S5TH.csv`/`MMTH.csv`.
+- Prefer `breadth_daily.csv` over raw `S5TH.csv` for any new lookback-window logic (pre-2007 trap).
+- New backtests should copy the signal block from `qqq_backtest.py` rather than re-deriving it.
