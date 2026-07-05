@@ -58,8 +58,9 @@ def load_data() -> pd.DataFrame:
     ndx = pd.read_csv(NDX_FILE)
     ndx["Date"] = pd.to_datetime(ndx["Date"], format="%m/%d/%Y")
     ndx.set_index("Date", inplace=True)
-    ndx = ndx.rename(columns={"Price": "price"})
+    ndx = ndx.rename(columns={"Price": "price", "Open": "open"})
     ndx["price"] = _parse_price(ndx["price"])
+    ndx["open"]  = _parse_price(ndx["open"])
 
     if BREADTH_DAILY_FILE.exists():
         b200 = pd.read_csv(BREADTH_DAILY_FILE)
@@ -79,7 +80,7 @@ def load_data() -> pd.DataFrame:
     vix.set_index("Date", inplace=True)
     vix["vix"] = _parse_price(vix["Price"])
 
-    merged = ndx[["price"]].join(
+    merged = ndx[["price", "open"]].join(
         b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"
     )
     merged = merged.join(vix[["vix"]], how="left")
@@ -136,14 +137,22 @@ def _buy_signal(row, date, cooldown_until, last_sell_reason, last_exit_price):
 
 
 def run_strategy(df: pd.DataFrame, cooldown_days: int = 0,
-                 execution_lag: int = 0) -> tuple[pd.Series, list[dict], dict | None]:
+                 execution_lag: int = 0,
+                 fill_on: str = "close") -> tuple[pd.Series, list[dict], dict | None]:
     """
-    execution_lag = 0 → same-day fill at signal-day close (baseline).
-    execution_lag = 1 → next trading day's close (realistic).
+    execution_lag = 0 → same-day fill (baseline; only valid with fill_on="close").
+    execution_lag = 1 → next trading day.
+    fill_on = "close" → fill at the fill-day close.
+    fill_on = "open"  → fill at the fill-day open (needs lag ≥ 1, else look-ahead:
+                        the open precedes the signal-day close).
 
-    A signal detected on day t is stored as a pending order and filled at the
-    close `execution_lag` bars later. All signal computations are unchanged.
+    A signal detected on day t is stored as a pending order and filled
+    `execution_lag` bars later. All signal computations use the CLOSE and are
+    unchanged; only the transaction price and its timing differ. Marking to
+    market always uses the close.
     """
+    if fill_on == "open" and execution_lag < 1:
+        raise ValueError("fill_on='open' requires execution_lag >= 1 (open precedes close)")
     position       = "OUT"
     eff_entry      = raw_entry = 0.0
     entry_date     = None
@@ -165,7 +174,7 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0,
     n = len(rows)
 
     def execute_due(i, date, price):
-        """Fill a pending order whose fill bar is today. Returns True if filled."""
+        """Fill a pending order whose fill bar is today, at `price`. Returns True if filled."""
         nonlocal position, eff_entry, raw_entry, entry_date, trade_low, trade_high
         nonlocal macd_age, ext_age, buy_trigger, portfolio, cooldown_until
         nonlocal last_sell_reason, last_exit_price, pending
@@ -210,10 +219,15 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0,
 
     for i in range(n):
         date, row = rows[i]
-        price = row["price"]
+        price = row["price"]                       # close: drives signals + MTM
+        # Fill price: the fill-day open (fall back to close if open missing) or close.
+        if fill_on == "open" and not pd.isna(row["open"]):
+            fill_price = row["open"]
+        else:
+            fill_price = price
 
         # 1) Execute any order that came due today (carried over from a prior day).
-        executed = execute_due(i, date, price)
+        executed = execute_due(i, date, fill_price)
 
         # 2) Evaluate signals on today's data → set pending for a future fill.
         #    Skip on a day we just executed a fill, to mirror the canonical loop
@@ -248,7 +262,7 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0,
                     pending = {"action": "SELL", "fill_at": i + execution_lag,
                                "reason": reason}
             # Same-day execution (lag 0): the order set above is due today.
-            executed = execute_due(i, date, price)
+            executed = execute_due(i, date, fill_price)
 
         # 3) Mark to market at end of day on the resulting position.
         if position == "IN":
@@ -315,28 +329,38 @@ def _fmt(k, v):
     return str(v)
 
 
-def print_comparison(same: dict, nxt: dict, bench: dict) -> None:
+def print_comparison(columns: list[tuple[str, dict]], bench: dict) -> None:
+    """columns: list of (label, metrics dict); first column is the baseline for deltas."""
     keys = ["Total Return", "CAGR", "Max Drawdown", "Sharpe Ratio", "Final Value",
             "# Trades", "Win Rate", "Time in Market"]
-    col = 16
-    hdr = (f"{'Metric':<18}{'Same-day':>{col}}{'Next-day':>{col}}"
-           f"{'Delta':>{col}}{'Buy&Hold':>{col}}")
+    base = columns[0][1]
+    col = 15
+    hdr = f"{'Metric':<16}" + "".join(f"{lbl:>{col}}" for lbl, _ in columns)
+    hdr += f"{'Buy&Hold':>{col}}"
     sep = "=" * len(hdr)
     print(f"\n{sep}\n{hdr}\n{sep}")
     for k in keys:
-        s, x = same.get(k), nxt.get(k)
-        delta = "—"
-        if k in ("Total Return", "CAGR", "Max Drawdown", "Win Rate", "Time in Market"):
-            delta = f"{(x - s):+.1%}"
-        elif k == "Sharpe Ratio":
-            delta = f"{(x - s):+.2f}"
-        elif k == "Final Value":
-            delta = f"{(x - s):+,.0f}"
-        elif k == "# Trades":
-            delta = f"{x - s:+d}"
+        line = f"  {k:<14}"
+        for _, m in columns:
+            line += f"{_fmt(k, m.get(k)):>{col}}"
         b = bench.get(k)
-        bstr = _fmt(k, b) if b is not None else "—"
-        print(f"  {k:<16}{_fmt(k, s):>{col}}{_fmt(k, x):>{col}}{delta:>{col}}{bstr:>{col}}")
+        line += f"{(_fmt(k, b) if b is not None else '—'):>{col}}"
+        print(line)
+    # Delta rows: each non-baseline column vs the baseline.
+    print("-" * len(hdr))
+    for lbl, m in columns[1:]:
+        parts = []
+        for k in ["Total Return", "CAGR", "Max Drawdown", "Sharpe Ratio",
+                  "Win Rate", "Time in Market", "# Trades"]:
+            s, x = base.get(k), m.get(k)
+            if k in ("Total Return", "CAGR", "Max Drawdown", "Win Rate", "Time in Market"):
+                d = f"{(x - s):+.1%}"
+            elif k == "Sharpe Ratio":
+                d = f"{(x - s):+.2f}"
+            elif k == "# Trades":
+                d = f"{x - s:+d}"
+            parts.append(f"{k} {d}")
+        print(f"  Δ vs baseline [{lbl}]: " + ", ".join(parts))
     print(sep)
 
 
@@ -346,14 +370,17 @@ def main() -> None:
     print(f"Date range : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
 
     bench = compute_metrics(run_benchmark(df))
-    same_v, same_t, _ = run_strategy(df, cooldown_days=COOLDOWN_DAYS, execution_lag=0)
-    next_v, next_t, _ = run_strategy(df, cooldown_days=COOLDOWN_DAYS, execution_lag=1)
+    same_v, same_t, _   = run_strategy(df, cooldown_days=COOLDOWN_DAYS, execution_lag=0)
+    nopen_v, nopen_t, _ = run_strategy(df, cooldown_days=COOLDOWN_DAYS, execution_lag=1, fill_on="open")
+    nclz_v, nclz_t, _   = run_strategy(df, cooldown_days=COOLDOWN_DAYS, execution_lag=1, fill_on="close")
 
-    print("\nSame-day  = fill at signal-day close (baseline, look-ahead)")
-    print("Next-day  = fill at the NEXT trading day's close (realistic)")
+    print("\nSame-day close = fill at signal-day close (baseline, look-ahead)")
+    print("Next-day open  = fill at the NEXT trading day's OPEN  (most realistic)")
+    print("Next-day close = fill at the NEXT trading day's CLOSE")
     print_comparison(
-        compute_metrics(same_v, same_t),
-        compute_metrics(next_v, next_t),
+        [("Same-day cl", compute_metrics(same_v, same_t)),
+         ("Nextday op",  compute_metrics(nopen_v, nopen_t)),
+         ("Nextday cl",  compute_metrics(nclz_v, nclz_t))],
         bench,
     )
 
