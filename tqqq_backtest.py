@@ -12,7 +12,11 @@ SELL (while IN):  any of —
                     10-day MA AND MACD(12,26,9) flipped bearish (post-entry)
                   • Trailing stop: price 25% below the high since entry
 
-Price data fetched from yfinance (TQQQ, since 2010-02-11).
+Price data fetched from yfinance (TQQQ, since its 2010-02-11 inception). Before
+inception the series is SIMULATED back to 2002 from NASDAQ100.csv: LEVERAGE× the
+NDX daily close-to-close return minus a constant daily drag (expense ratio +
+financing cost), calibrated on the actual-TQQQ/NDX overlap — same splice idea as
+build_breadth_daily.py. Synthetic opens use LEVERAGE× the NDX overnight gap.
 Breadth data from S5TH.csv (S&P 500 % above 200-day MA).
 VIX data from VIX.csv.
 
@@ -38,6 +42,14 @@ BREADTH_DAILY_FILE = DATA_DIR / "breadth_daily.csv"
 BREADTH_DAILY_MIN  = "2007-01-01"  # fallback cutoff when daily file is absent
 NDX_FILE     = DATA_DIR / "NASDAQ100.csv"   # used for QQQ comparison
 VIX_FILE     = DATA_DIR / "VIX.csv"
+
+# ── Pre-inception simulation ──────────────────────────────────────────────────
+# TQQQ only exists since 2010-02-11. Earlier history is simulated from NDX:
+# sim_ret = LEVERAGE × ndx_ret − drag, where the constant daily drag (expense
+# ratio + financing cost of the 2× borrowed exposure) is calibrated on the
+# actual-TQQQ/NDX overlap.
+LEVERAGE       = 3.0
+TQQQ_INCEPTION = "2010-02-11"
 
 # ── Buy thresholds ────────────────────────────────────────────────────────────
 BUY_B200_THRESH = 26.0   # breadth200 must be below this
@@ -100,6 +112,65 @@ def _load_vix() -> pd.Series:
     return _parse_price(vix["Price"]).rename("vix")
 
 
+def _load_ndx() -> pd.DataFrame:
+    ndx = pd.read_csv(NDX_FILE)
+    ndx["Date"] = pd.to_datetime(ndx["Date"], format="%m/%d/%Y")
+    ndx.set_index("Date", inplace=True)
+    ndx.sort_index(inplace=True)
+    return pd.DataFrame({
+        "ndx_price": _parse_price(ndx["Price"]),
+        "ndx_open":  _parse_price(ndx["Open"]),
+    })
+
+
+def _simulate_pre_inception(
+    actual_close: pd.Series, ndx: pd.DataFrame
+) -> tuple[pd.Series, pd.Series, float]:
+    """Extend TQQQ before its inception with LEVERAGE× daily NDX returns minus a
+    constant daily drag, scaled so the simulated path lands exactly on the first
+    actual TQQQ close. Returns (sim_close, sim_open, daily_drag).
+
+    The drag (expense ratio + financing cost) is the mean daily shortfall of
+    actual TQQQ returns vs LEVERAGE× NDX returns over the post-inception
+    overlap — the same fit-on-overlap splice idea as build_breadth_daily.py.
+    Synthetic opens apply LEVERAGE× the NDX overnight gap to the prior
+    simulated close, so next-open fills stay meaningful in the pre-2010 era.
+    """
+    first_date  = actual_close.index[0]
+    first_close = float(actual_close.iloc[0])
+
+    ndx_ret = ndx["ndx_price"].pct_change()
+    overlap = pd.concat(
+        [actual_close.pct_change().rename("tqqq"), ndx_ret.rename("ndx")], axis=1
+    ).dropna()
+    if overlap.empty:
+        raise ValueError("no TQQQ/NDX overlap to calibrate the simulation drag")
+    drag = float((LEVERAGE * overlap["ndx"] - overlap["tqqq"]).mean())
+    corr = float((LEVERAGE * overlap["ndx"]).corr(overlap["tqqq"]))
+
+    pre = ndx[ndx.index < first_date]
+    sim_ret = (LEVERAGE * pre["ndx_price"].pct_change() - drag).fillna(0.0)
+    worst = float(sim_ret.min())
+    if worst <= -1.0:
+        raise ValueError(f"simulated daily return {worst:.1%} wipes out the fund")
+
+    # Grow an unscaled path forward, then scale it so that compounding through
+    # the boundary return (last pre-inception close → first actual close) lands
+    # exactly on the first real TQQQ print.
+    cum = (1.0 + sim_ret).cumprod()
+    boundary_ret = LEVERAGE * float(ndx_ret.get(first_date, 0.0)) - drag
+    scale = first_close / (float(cum.iloc[-1]) * (1.0 + boundary_ret))
+    sim_close = (cum * scale).rename("price")
+
+    gap = ndx["ndx_open"] / ndx["ndx_price"].shift(1) - 1.0
+    sim_open = (sim_close.shift(1) * (1.0 + LEVERAGE * gap.reindex(sim_close.index))).rename("open")
+
+    print(f"Simulated TQQQ {sim_close.index[0].date()} → {sim_close.index[-1].date()} "
+          f"from {LEVERAGE:.0f}× NDX daily returns "
+          f"(drag {drag*252:.2%}/yr, overlap corr {corr:.4f}, worst day {worst:.1%})")
+    return sim_close, sim_open, drag
+
+
 def load_tqqq_data() -> pd.DataFrame:
     print("Fetching TQQQ from yfinance…")
     raw = yf.download("TQQQ", start="2010-01-01", progress=False)
@@ -119,10 +190,13 @@ def load_tqqq_data() -> pd.DataFrame:
 
     b200 = _load_breadth()
 
-    ndx = pd.read_csv(NDX_FILE)
-    ndx["Date"] = pd.to_datetime(ndx["Date"], format="%m/%d/%Y")
-    ndx.set_index("Date", inplace=True)
-    ndx_price = _parse_price(ndx["Price"]).rename("ndx_price")
+    ndx = _load_ndx()
+    ndx_price = ndx["ndx_price"]
+
+    # Splice: simulated 3× NDX before inception, actual TQQQ after.
+    sim_close, sim_open, _ = _simulate_pre_inception(tqqq, ndx)
+    tqqq      = pd.concat([sim_close, tqqq])
+    tqqq_open = pd.concat([sim_open, tqqq_open])
 
     merged = tqqq.to_frame().join(tqqq_open, how="left").join(
         b200[["Price"]].rename(columns={"Price": "breadth"}), how="left"
