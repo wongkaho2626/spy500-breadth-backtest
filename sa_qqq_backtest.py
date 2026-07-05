@@ -47,6 +47,13 @@ TRAILING_STOP_PCT  = 25.0
 FALLBACK_MONTH_END = 3    # optimised (was 4)
 INITIAL_CAPITAL    = 10_000.0
 
+# ── Execution timing ──────────────────────────────────────────────────────────
+# Signals come from end-of-day data; the earliest tradeable fill is the NEXT
+# session. Default: a signal on day t fills at day t+1's OPEN of the SA picks.
+# Set EXECUTION_LAG=0 and FILL_PRICE="close" for the legacy same-day-close fill.
+EXECUTION_LAG = 1        # bars between signal and fill (0 = same day, look-ahead)
+FILL_PRICE    = "open"   # "open" or "close" of the fill bar
+
 SA_PICKS = {
     2022: ["FNF", "BAC", "LYG", "CI", "BNTX", "CVX", "XOM", "AMD", "QCOM", "F"],
     2023: ["ASC", "ENGIY", "HDSN", "JXN", "MNSO", "MOD", "PDD", "SMCI", "VLO", "VRNA"],
@@ -137,9 +144,11 @@ def load_market_data() -> pd.DataFrame:
     return df
 
 
-def fetch_stock_prices(tickers: list[str], start: str, end: str) -> pd.DataFrame:
-    """Download adjusted close prices; silently skip tickers with no data."""
-    data = {}
+def fetch_stock_prices(tickers: list[str], start: str, end: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Download adjusted close AND open prices; silently skip tickers with no
+    data. Returns (closes, opens) — opens are the fill prices under next-day-open
+    execution; closes drive signals and mark-to-market."""
+    data, odata = {}, {}
     for t in tickers:
         try:
             hist = yf.download(t, start=start, end=end, auto_adjust=True, progress=False)
@@ -147,13 +156,21 @@ def fetch_stock_prices(tickers: list[str], start: str, end: str) -> pd.DataFrame
                 s = hist["Close"].squeeze()
                 if not s.empty:
                     data[t] = s
+                    if "Open" in hist.columns:
+                        o = hist["Open"].squeeze()
+                        if not o.empty:
+                            odata[t] = o
         except Exception:
             pass
     if not data:
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
     prices = pd.DataFrame(data)
     prices.index = pd.to_datetime(prices.index).tz_localize(None)
-    return prices.sort_index()
+    opens = pd.DataFrame(odata)
+    if not opens.empty:
+        opens.index = pd.to_datetime(opens.index).tz_localize(None)
+        opens = opens.sort_index()
+    return prices.sort_index(), opens
 
 
 def _find_entry_date(
@@ -204,18 +221,38 @@ def simulate_year(
 
     fetch_start = (entry_date - pd.Timedelta(days=5)).strftime("%Y-%m-%d")
     fetch_end   = (year_end + pd.Timedelta(days=5)).strftime("%Y-%m-%d")
-    prices = fetch_stock_prices(SA_PICKS[year], fetch_start, fetch_end)
+    prices, opens = fetch_stock_prices(SA_PICKS[year], fetch_start, fetch_end)
 
     if prices.empty:
         return capital, _empty_record(year, strategy, entry_date, year_end, capital)
 
     trading_days = mkt.loc[entry_date:year_end].index
     prices = prices.reindex(trading_days, method="ffill").dropna(how="all")
+    if not opens.empty:
+        opens = opens.reindex(prices.index)
 
     if prices.empty:
         return capital, _empty_record(year, strategy, entry_date, year_end, capital)
 
-    entry_row = prices.iloc[0]
+    # The signal is known at entry_date's close; the actual purchase happens
+    # EXECUTION_LAG sessions later (next trading day by default).
+    entry_fill_idx = min(EXECUTION_LAG, len(prices.index) - 1)
+    entry_date     = prices.index[entry_fill_idx]
+    prices         = prices.iloc[entry_fill_idx:]
+    if not opens.empty:
+        opens = opens.reindex(prices.index)
+
+    def _fill_row(date: pd.Timestamp) -> pd.Series:
+        """Fill prices for `date`: each ticker's open when available, else close."""
+        row = prices.loc[date].copy()
+        if FILL_PRICE == "open" and not opens.empty and date in opens.index:
+            orow = opens.loc[date]
+            for t in row.index:
+                if t in orow.index and not pd.isna(orow[t]):
+                    row[t] = orow[t]
+        return row
+
+    entry_row = _fill_row(prices.index[0])
     available = [t for t in entry_row.index if not pd.isna(entry_row[t])]
     if not available:
         return capital, _empty_record(year, strategy, entry_date, year_end, capital)
@@ -233,6 +270,7 @@ def simulate_year(
     exit_date      = prices.index[-1]
     exit_reason    = "year-end"
     min_hold_idx   = MIN_HOLD_DAYS
+    exit_signal_idx: int | None = None
 
     for idx, date in enumerate(prices.index):
         current_prices = prices.loc[date, available].ffill()
@@ -245,23 +283,27 @@ def simulate_year(
         if strategy == "D" and past_min_hold:
             peak_portfolio = max(peak_portfolio, port_value)
             if port_value < peak_portfolio * (1 - TRAILING_STOP_PCT / 100):
-                exit_date   = date
+                exit_signal_idx = idx
                 exit_reason = f"trailing-stop ({TRAILING_STOP_PCT:.0f}%)"
-                capital     = port_value
                 break
 
         if strategy in ("C", "D") and past_min_hold:
             if date in mkt.index and bool(mkt.loc[date, "bearish_div"]):
-                exit_date   = date
+                exit_signal_idx = idx
                 exit_reason = "bearish-divergence"
-                capital     = port_value
                 break
+
+    if exit_signal_idx is not None:
+        # Signal known at that close → sell EXECUTION_LAG sessions later.
+        fill_i    = min(exit_signal_idx + EXECUTION_LAG, len(prices.index) - 1)
+        exit_date = prices.index[fill_i]
+        final_px  = _fill_row(exit_date)[available].ffill()
+        capital   = float((shares * final_px).sum())
     else:
-        final_prices = prices.loc[exit_date, available].ffill()
-        capital      = float((shares * final_prices).sum())
+        final_px = prices.loc[exit_date, available].ffill()
+        capital  = float((shares * final_px).sum())
 
     # Build per-stock records
-    final_px = prices.loc[exit_date, available].ffill()
     stock_trades = []
     for t in available:
         ep  = float(entry_prices[t])
