@@ -100,7 +100,7 @@ saves a chart PNG (and some export `*_results.csv` / `*_metrics.csv` files). Gro
 | `qqq_backtest.py` | QQQ / NDX | NDX | **Canonical, best-documented implementation** |
 | `spy_backtest.py` | SPX | SPX | Same signals on the S&P 500 |
 | `soxx_backtest.py` | SOXX | SOXX | Semiconductor ETF |
-| `tqqq_backtest.py` | TQQQ (3× NDX) | NDX | Price fetched via yfinance (2010+) |
+| `tqqq_backtest.py` | TQQQ (3× NDX) | NDX | Actual price via yfinance (2010+); pre-inception simulated back to 2002 as 3× NDX daily returns minus an overlap-calibrated drag |
 | `qqq_pct200_backtest.py` | QQQ | NDX | Pure "% above 200-day" entry, no vote gate |
 
 ### Concentrated single-stock
