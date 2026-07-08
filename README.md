@@ -29,6 +29,63 @@ are frozen as of 2026-07-05 in
 out-of-sample tracking. Expect a future drawdown worse than the backtest's
 −32% (bootstrap 5th percentile ≈ −39%).
 
+## Research Log (July 2026): Validation & Challenger Studies
+
+A full statistical audit and a series of "try to beat it" experiments were run on the
+**QQQ 70% / NDX-top-1 30% blend** (continuous run 2002–2026: 22.5% CAGR, Sharpe 1.08,
+−35.9% max drawdown). Summary of what held up and what didn't:
+
+### Validation of the baseline (composite backtest score: 79/100, "Promising")
+
+- **Significance**: daily t-stat 5.3, PSR ≈ 100%, deflated Sharpe ≈ 95% under a
+  ~1,000-trial multiple-testing assumption. Excess return over NDX buy & hold:
+  +8.2%/yr, t = 2.48.
+- **No lookahead** (same-close vs next-open fills differ by <0.1 pt CAGR), **costs
+  immaterial** (10× costs cost 0.8 pt CAGR), **smooth parameter surface** (5×5 grid
+  Sharpe 0.92–1.08, no cliffs), **dual-direction walk-forward passes** (efficiency
+  1.29 / 0.69), stock-leg stress fine (rank-2/3 holding instead of rank-1 barely
+  changes results).
+- **Honest limits**: the excess over buy & hold is concentrated in two crisis calls
+  (2008, 2022); only 19 round-trips (~34 effective independent trades after pooling
+  a 4-asset cross-validation); the signal's edge is NASDAQ-specific — the same
+  machine *underperforms* buy & hold on SOXX.
+- **Weight sweep**: every QQQ/stock mix from 100/0 to 0/100 scores 77–79. Weights
+  are a risk dial, not an alpha source — pick by drawdown tolerance.
+
+### One upgrade adopted: the washout boost
+
+Washout entries (crash-rebound buys) historically return far more than trend
+re-entries (+62% vs +8% per trade). Carving **10% of capital into TQQQ on washout
+entries only** (`qqq70stock30_washoutboost_dca_rolling.py`) adds +3.5 pts CAGR at a
+highly significant incremental t = 3.9, robust to tripling the synthetic-TQQQ drag
+assumption. Cost: max drawdown deepens −36% → −41%. On the $1M + $200k/yr DCA
+schedule the 20-year average final value rises from $117M to $197M
+(`qqq70stock30_washoutboost_dca_rolling.csv` vs `qqq70stock30_dca_rolling.csv`).
+
+### Challengers that failed to beat it
+
+All tested with the same execution model and costs, untuned a-priori parameters,
+excess t-stats vs the breadth baseline:
+
+| Challenger family | Result |
+|---|---|
+| MA200 trend following (cash or IEF when out) | Sharpe 0.73–0.75, t = −2.6 to −3.0 |
+| 12-month time-series momentum | Sharpe 0.72–0.76, t = −2.3 to −2.7 |
+| Volatility-managed leverage (up to 2× via TQQQ) | Sharpe 0.66–0.83, best variant only ties on CAGR |
+| QQQ/SPY/SOXX momentum rotation (+IEF fallback) | Sharpe 0.75, t = −1.0 |
+| VXN (implied vol) as signal or extra exit | t = −2.5 to −3.1 |
+| VIX/VIX3M term-structure regime (2008+) | t = −3.5 to −3.8 |
+| CBOE SKEW divergence exit | t = −3.3 |
+| Forward-earnings revision momentum (from `S&P500ForwardPE.csv`) | Sharpe 0.42, t = −4.3 |
+
+Interpretation: implied vol is a coincident fear gauge (false divergences in healthy
+rallies), earnings revisions lag price at turning points, and pure price systems
+lack the internals information breadth carries. Risk overlays (vol targeting,
+drawdown throttle) reduce drawdown but add no risk-adjusted edge — they are risk
+dials, tested and documented in the session audits. The breadth signal has now
+survived eleven challenger families across price, sector, credit, options-implied,
+and earnings data.
+
 ## How It Works
 
 The strategy uses the **S&P 500 breadth indicator** — the percentage of S&P 500 stocks trading above their 200-day moving average — as a market-health signal to time entries and exits.
