@@ -45,6 +45,56 @@ or `"OUT"`, driven by these rules (see `qqq_backtest.py` for the canonical, best
   (e.g. the 2022 whipsaws) while catching real recoveries (e.g. after the false 2004 divergence).
 - A **cooldown** (default 15–30 days, configurable) must have elapsed since the last exit.
 
+> **Tested & rejected — mid-trend "dip" entry (2026-07).** A third entry path was tried: while
+> FLAT in a healthy uptrend (price > MA200, breadth ≥ 26), enter on an oversold dip — RSI(14) < 35
+> **or** price ≥ 10% below its 126-day high. The motive was to give a flat position a way in
+> *without* waiting for a rare breadth-<26 washout. In an **isolated** forward-return scan those
+> dips look good (RSI<35: +10.3% fwd-6m, better ret/drawdown than "buy any day"). But **added to
+> the full strategy it hurt across the board**: Sharpe 1.12 → 0.99, CAGR 20.5% → 18.7%, MaxDD
+> −32.2% → −34.8%, and it added only 2 net trades (17 → 19, still < 30). Mechanism: the dip entry
+> **front-runs the washout** — it buys oversold dips *earlier and higher* that then deepen into the
+> very crash the washout was built to bottom-tick (e.g. a 2007-11 RSI dip entry rode the GFC to
+> −23%; the 2025 dip entry front-ran the April washout and ate a −17% drawdown vs the washout
+> entry's 0%). Lesson: **a signal with standalone forward-return edge is not additive** — this
+> strategy's edge *is* its patience (only buying washouts), and any "get in sooner" path destroys
+> the downside-avoidance that creates the edge. Don't re-try mid-trend entries without a
+> fundamentally different gate. (Scan + patched backtest were run in a scratchpad; canonical
+> `qqq_backtest.py` was left unchanged.)
+
+> **Tested & rejected — bullish-divergence entry (2026-07).** The "fundamentally different gate"
+> the note above asks for was then tried: the **mirror of the bearish-divergence exit** — price
+> *fell* ≥ X% over 60 days while breadth *rose* ≥ Y pts (internals healing before price confirms).
+> Breadth-based, not price-oversold, so it is a genuinely different mechanism. Two findings:
+>
+> 1. **The strict mirror barely exists, and for SPX it is structurally impossible.** At the exact
+>    mirror thresholds (−3% price / +20 pts breadth) SPX fires **0 times in 24 years** (even
+>    −1%/+20pts fires once). S&P breadth *is* the S&P's own internals: if 20% more S&P stocks
+>    reclaim their 200-day MA, the index cannot be falling. The asymmetry is real — a *narrow
+>    rally* (mega-caps carrying a declining majority) is common, so bearish divergence works; the
+>    reverse is not. NDX fires more often (14 days at −3%/+20pts) **only because NDX is a different
+>    universe from S&P breadth** — "NDX down + S&P breadth up" is tech-out-of-favour *rotation*,
+>    not NDX bullishness.
+> 2. **As a mid-trend entry it does not exist; as a crash-recovery entry it is net-negative.**
+>    Mid-trend (price > MA200): 3 episodes in 24 years, 2 of which the strategy was already IN →
+>    **one usable signal ever**, and mid-trend instances *underperformed* (+1.2% fwd-6m vs +8.2%
+>    baseline). Gated to below-MA200 (crash regime, price −3% / breadth +5 pts) it fires 3 times
+>    and gives Sharpe 1.12 → 1.09, CAGR 20.5% → 20.1%, MaxDD unchanged at −32.2%, 17 → 18 trades.
+>    Right **2 of 3** (2004-09 entry +43.4% vs baseline's later +33.4%; 2022-12 +12.2%) but the
+>    miss (2022-04, −15.4%) front-ran the June washout and cost more than both wins gained.
+>    Mechanism: "internals healing" looks identical at a **real bottom** (2004-09, 2022-12) and at
+>    a **bear-market rally** (2022-04) — the signal cannot separate them.
+>
+> **⚠️ Overfitting trap — do not "fix" it this way.** A breadth floor of ~50 would exclude the one
+> loser (breadth 44.5) while keeping both winners (59.6, 52.7), turning this into 2 wins / 0 losses.
+> That is tuning a threshold on **n=3** to draw a circle around the single bad trade — exactly the
+> curve-fitting the Deflated Sharpe penalty exists to punish. It would look better and *be* worse.
+>
+> Verdict: rejected, but it is the strongest of the alternative-entry attempts (sound mechanism,
+> drawdown-neutral). The pattern across every attempt is now unambiguous: **any path that enters
+> earlier than washout/MA200 confirmation gives back more in the bad cases than it gains in the
+> good ones.** The waiting is not a bug — it is the product. (Scans + patched backtest ran in a
+> scratchpad; canonical `qqq_backtest.py` unchanged.)
+
 **SELL (while IN)** — any of:
 - **Bearish divergence**: price rose ≥ 3% over a 60-day window while breadth fell ≥ 20 pts AND
   breadth is currently < 60%. Flags a narrowing rally carried by a shrinking set of leaders.
