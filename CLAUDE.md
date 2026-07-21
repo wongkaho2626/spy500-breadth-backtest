@@ -167,6 +167,7 @@ saves a chart PNG (and some export `*_results.csv` / `*_metrics.csv` files). Gro
 | `combined_rebalance_n30q70.py` | Same weights, rebalance variant |
 | `combined_t5n25q70.py` | 5% TQQQ / 25% NDX top-1 / 70% QQQ, rebalanced at each entry |
 | `stock30spy40soxx30_dca_rolling.py` | Rolling-window DCA over 30% NDX top-1 / 40% SPY / 30% SOXX |
+| `sp500_top17_backtest.py` | Canonical signals on SPX applied to the top-17 S&P 500 stocks (yearly reconstitution from `SP500/sp500_top17_holdings.csv`), equal-weight vs market-cap-weight; stock data via `SP500/fetch_stock_history.py` |
 
 ### Grid searches & sweeps (write `*_results.csv`)
 | Script | Explores |
