@@ -15,8 +15,10 @@ needs an existing S5TH.csv — it extends the series incrementally and does
 not rebuild deep history (a full rebuild would need 200 trading days of
 constituent prices before every historical date).
 
-Instruments updated by fetch_all_updates(): all three.
-Instruments updated by fetch_spy_updates(): SPX.csv + S5TH.csv.
+Instruments updated by fetch_all_updates(): all three, followed by rebuilding
+breadth_daily.csv from the refreshed S5TH.csv.
+Instruments updated by fetch_spy_updates(): SPX.csv + S5TH.csv, followed by the
+same breadth_daily.csv rebuild.
 """
 from __future__ import annotations
 
@@ -26,6 +28,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 import yfinance as yf
+
+from build_breadth_daily import build_breadth_daily
 
 DATA_DIR = Path(__file__).parent
 
@@ -285,6 +289,7 @@ def fetch_all_updates(verbose: bool = True) -> None:
     if verbose:
         print("Fetching latest data from Yahoo Finance...")
     _fetch_instruments(INSTRUMENTS, verbose)
+    build_breadth_daily(verbose=verbose)
 
 
 def fetch_spy_updates(verbose: bool = True) -> None:
@@ -292,6 +297,7 @@ def fetch_spy_updates(verbose: bool = True) -> None:
     if verbose:
         print("Fetching latest S&P 500 data from Yahoo Finance...")
     _fetch_instruments(SPY_INSTRUMENTS, verbose)
+    build_breadth_daily(verbose=verbose)
 
 
 if __name__ == "__main__":

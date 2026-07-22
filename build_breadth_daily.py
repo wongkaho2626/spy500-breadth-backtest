@@ -37,7 +37,8 @@ def load_mmth() -> pd.Series:
     return df.set_index("time")["close"].sort_index()
 
 
-def main() -> None:
+def build_breadth_daily(verbose: bool = True) -> Path:
+    """Rebuild the derived daily breadth CSV from its source series."""
     s5th = load_s5th()
     mmth = load_mmth()
 
@@ -47,8 +48,9 @@ def main() -> None:
     fitted = a + b * overlap["mmth"]
     r = overlap["s5th"].corr(overlap["mmth"])
     rmse = np.sqrt(((overlap["s5th"] - fitted) ** 2).mean())
-    print(f"Overlap fit on {len(overlap):,} days: S5TH ≈ {a:.2f} + {b:.3f}·MMTH")
-    print(f"  correlation r = {r:.3f}, RMSE = {rmse:.1f} pts")
+    if verbose:
+        print(f"Overlap fit on {len(overlap):,} days: S5TH ≈ {a:.2f} + {b:.3f}·MMTH")
+        print(f"  correlation r = {r:.3f}, RMSE = {rmse:.1f} pts")
 
     pre = mmth[mmth.index < DAILY_START]
     mapped = (a + b * pre).clip(0, 100).rename("breadth")
@@ -65,9 +67,15 @@ def main() -> None:
     out["breadth"] = out["breadth"].round(2)
     out.to_csv(OUT_FILE, index=False)
 
-    print(f"\nWrote {len(out):,} rows -> {OUT_FILE.name}")
-    print(f"  {out['Date'].iloc[0]} … {out['Date'].iloc[-1]}")
-    print(f"  {len(mapped):,} mapped MMTH rows (2002–2006), {len(real):,} real S5TH rows")
+    if verbose:
+        print(f"\nWrote {len(out):,} rows -> {OUT_FILE.name}")
+        print(f"  {out['Date'].iloc[0]} … {out['Date'].iloc[-1]}")
+        print(f"  {len(mapped):,} mapped MMTH rows (2002–2006), {len(real):,} real S5TH rows")
+    return OUT_FILE
+
+
+def main() -> None:
+    build_breadth_daily()
 
 
 if __name__ == "__main__":
