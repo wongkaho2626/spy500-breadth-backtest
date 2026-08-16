@@ -16,6 +16,34 @@ Yahoo Finance returned through `yfinance`.
   count, date coverage, and output path.
 - `unavailable_tickers.csv`: symbols for which Yahoo returned no history.
 - `prices/`: one daily OHLCV/action CSV per available Yahoo symbol.
+- `membership_snapshots.csv`: cached daily/as-of historical S&P 500 membership
+  source used by the breadth reconstruction.
+- `ma200_warmup_prices/`: 1995 closing-price buffer used only to make the
+  200-session moving average valid from the first 1996 session.
+- `ma200_warmup_status.csv`: availability audit for that warm-up download.
+
+## Breadth backfill
+
+`../../backfill_breadth_daily.py` reconstructs the percentage of point-in-time
+S&P 500 members trading above their 200-session simple moving average. It uses
+the unadjusted `Close` field, calculates the percentage only among constituents
+with a valid price and full 200-session history, and records the changing
+available/constituent counts rather than treating missing companies as below
+their average.
+
+The script preserves the existing 2002+ values in `../../breadth_daily.csv`
+and fills 1996-2001 with source `SPY-constituents-MA200`. Its detailed daily
+reconstruction, overlap errors, summary metrics, and pre-fill backup are kept
+in the repository root as `breadth_spy_reconstruction.csv`,
+`breadth_backfill_validation.csv`,
+`breadth_backfill_validation_summary.json`, and
+`breadth_daily_pre_spy_backfill.csv`.
+
+Regenerate the backfill with:
+
+```bash
+python3 backfill_breadth_daily.py
+```
 
 ## Method and sources
 

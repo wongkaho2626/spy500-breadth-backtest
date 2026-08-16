@@ -10,6 +10,7 @@ correlates ~0.94 with S5TH on their 2007+ overlap, but sits ~8 pts lower.
 This script fits a linear map S5TH ≈ a + b·MMTH on the overlap, applies it to
 2002–2006 MMTH, and splices:
 
+    1996-01-02 … 2001-12-31 : preserved SPY constituent reconstruction
     2002-01-02 … 2006-12-31 : regression-mapped MMTH  (source = MMTH-mapped)
     2007-01-03 … present    : actual daily S5TH       (source = S5TH)
 
@@ -22,6 +23,7 @@ from pathlib import Path
 DATA_DIR    = Path(__file__).parent
 OUT_FILE    = DATA_DIR / "breadth_daily.csv"
 DAILY_START = pd.Timestamp("2007-01-01")   # S5TH is genuinely daily from here
+BACKFILL_SOURCE = "SPY-constituents-MA200"
 
 
 def load_s5th() -> pd.Series:
@@ -35,6 +37,22 @@ def load_mmth() -> pd.Series:
     df = pd.read_csv(DATA_DIR / "MMTH.csv")
     df["time"] = pd.to_datetime(df["time"])
     return df.set_index("time")["close"].sort_index()
+
+
+def load_existing_backfill(first_mapped_date: pd.Timestamp) -> pd.DataFrame:
+    """Keep a validated 1996-2001 reconstruction across routine rebuilds."""
+    if not OUT_FILE.exists():
+        return pd.DataFrame(columns=["breadth", "source"])
+    existing = pd.read_csv(OUT_FILE)
+    required = {"Date", "breadth", "source"}
+    if not required.issubset(existing.columns):
+        return pd.DataFrame(columns=["breadth", "source"])
+    existing["Date"] = pd.to_datetime(existing["Date"], format="%m/%d/%Y")
+    preserved = existing[
+        existing["source"].eq(BACKFILL_SOURCE)
+        & (existing["Date"] < first_mapped_date)
+    ]
+    return preserved.set_index("Date")[["breadth", "source"]].sort_index()
 
 
 def build_breadth_daily(verbose: bool = True) -> Path:
@@ -55,8 +73,10 @@ def build_breadth_daily(verbose: bool = True) -> Path:
     pre = mmth[mmth.index < DAILY_START]
     mapped = (a + b * pre).clip(0, 100).rename("breadth")
     real = s5th[s5th.index >= DAILY_START].rename("breadth")
+    preserved = load_existing_backfill(mapped.index.min())
 
     combined = pd.concat([
+        preserved,
         mapped.to_frame().assign(source="MMTH-mapped"),
         real.to_frame().assign(source="S5TH"),
     ]).sort_index()
@@ -70,7 +90,11 @@ def build_breadth_daily(verbose: bool = True) -> Path:
     if verbose:
         print(f"\nWrote {len(out):,} rows -> {OUT_FILE.name}")
         print(f"  {out['Date'].iloc[0]} … {out['Date'].iloc[-1]}")
-        print(f"  {len(mapped):,} mapped MMTH rows (2002–2006), {len(real):,} real S5TH rows")
+        print(
+            f"  {len(preserved):,} preserved SPY rows (1996–2001), "
+            f"{len(mapped):,} mapped MMTH rows (2002–2006), "
+            f"{len(real):,} real S5TH rows"
+        )
     return OUT_FILE
 
 
