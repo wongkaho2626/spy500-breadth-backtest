@@ -1,0 +1,16 @@
+{
+  "score": 94,
+  "threshold": 90,
+  "passed": true,
+  "verdict": "pass",
+  "category_match": true,
+  "reference_image": "/Users/wongkaho/Downloads/spy500_history/qqq_performance.png",
+  "generated_screenshot": "/Users/wongkaho/Downloads/spy500_history/qqq_trajectory_backtest_performance.png",
+  "differences": [
+    "The equity panel omits overlapping component trade markers and places them on the NDX panel instead.",
+    "The generated title describes the two-sleeve trajectory allocation instead of the frozen single-sleeve rules."
+  ],
+  "suggestions": [],
+  "reasoning": "The chart preserves the reference's three-panel hierarchy, colors, axes, date scale, and signal vocabulary. Moving the denser two-component markers to the price panel improves readability without hiding any signal class.",
+  "next_actions": []
+}

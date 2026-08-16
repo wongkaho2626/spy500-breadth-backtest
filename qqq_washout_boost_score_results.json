@@ -1,0 +1,377 @@
+{
+  "decision": "reject",
+  "idea_card": "/Users/wongkaho/Downloads/spy500_history/docs/research/washout_boost_score_idea.md",
+  "data": {
+    "start": "2002-01-02T00:00:00",
+    "end": "2026-07-31T00:00:00",
+    "bars": 6181,
+    "tqqq_daily_drag": 0.00012456455327811608,
+    "related_prior_trials": 4594
+  },
+  "configuration": {
+    "baseline_weights": {
+      "ndx": 0.7,
+      "ndx_top1": 0.3
+    },
+    "challenger_weights_on_washout": {
+      "ndx": 0.6,
+      "ndx_top1": 0.3,
+      "tqqq": 0.1
+    },
+    "challenger_weights_on_recross": {
+      "ndx": 0.7,
+      "ndx_top1": 0.3,
+      "tqqq": 0.0
+    },
+    "sensitivity": [
+      0.05,
+      0.1,
+      0.15
+    ],
+    "execution": "close signal, next-session open fill"
+  },
+  "baseline_parity": {
+    "equity_max_absolute_difference": 0.0,
+    "trade_signatures_identical": true,
+    "open_entry_identical": true,
+    "passed": true
+  },
+  "baseline": {
+    "metrics": {
+      "total_return": 183.7686278374097,
+      "cagr": 0.23661151031482364,
+      "annual_volatility": 0.20588545376604617,
+      "sharpe": 1.1368303825759893,
+      "sortino": 0.9790299716880294,
+      "calmar": 0.6576726279346475,
+      "max_drawdown": -0.35977095634628653,
+      "ulcer_index": 0.07734427605390069,
+      "time_underwater": 0.8422585342177641,
+      "var_95_daily": -0.01941545179638901,
+      "cvar_95_daily": -0.03072581120334017,
+      "skewness": 0.2586143788593402,
+      "excess_kurtosis": 11.801242151953078,
+      "jarque_bera_stat": 35866.81642921953,
+      "jarque_bera_p": 0.0,
+      "autocorrelation_lags_1_10": [
+        -0.0794384000974276,
+        0.013456295042295905,
+        -0.034178427409638265,
+        0.013338248445682514,
+        -0.005507136303460421,
+        -0.03293370500313851,
+        -0.0010455752744134579,
+        -0.015974251366782755,
+        0.033685534005691464,
+        0.023229278416722877
+      ],
+      "effective_daily_observations": 5293.7304648486,
+      "mean_return_t_stat": 5.210462972878424,
+      "psr_vs_zero": 0.9999999066537573,
+      "positive_months": 0.5068027210884354,
+      "rolling_sharpe_252_min": -1.5126755573901818,
+      "rolling_sharpe_252_max": 3.218051689198818,
+      "rolling_sharpe_252_std": 0.8481521059828441,
+      "completed_trades": 17,
+      "win_rate": 0.8235294117647058,
+      "profit_factor": 42.58811363420477,
+      "expectancy": 0.37196139574851655,
+      "average_win": 0.4625279019336183,
+      "average_loss": -0.05068229978195863,
+      "payoff_ratio": 9.126024350186736,
+      "exposure": 0.7319204012295745,
+      "round_trips_per_year": 0.6917613636363636
+    },
+    "early_period": {
+      "start": "2002-01-02T00:00:00",
+      "end": "2013-12-31T00:00:00",
+      "observations": 3017,
+      "cagr": 0.1997786363885472,
+      "sharpe": 1.0084757338692298,
+      "max_drawdown": -0.35977095634628653,
+      "annual_volatility": 0.2010223647982322
+    },
+    "late_period": {
+      "start": "2014-01-02T00:00:00",
+      "end": "2026-07-31T00:00:00",
+      "observations": 3162,
+      "cagr": 0.27399037710550234,
+      "sharpe": 1.2586219542225479,
+      "max_drawdown": -0.2976208864833847,
+      "annual_volatility": 0.21044164596883722
+    },
+    "real_breadth_period": {
+      "start": "2007-01-03T00:00:00",
+      "end": "2026-07-31T00:00:00",
+      "observations": 4924,
+      "cagr": 0.2682614207725844,
+      "sharpe": 1.202250418953863,
+      "max_drawdown": -0.35977095634628653,
+      "annual_volatility": 0.21780052177225304
+    },
+    "clean_forward_slice": {
+      "start": "2026-07-06T00:00:00",
+      "end": "2026-07-31T00:00:00",
+      "observations": 19,
+      "cagr": -0.24298900854447758,
+      "sharpe": -2.8776149413317524,
+      "max_drawdown": -0.03237569477729729,
+      "annual_volatility": 0.08654629667101935
+    },
+    "statistical_diagnostics": {
+      "ljung_box_lag": 10,
+      "ljung_box_q": 67.31486812670457,
+      "ljung_box_p": 1.4587680440078755e-10,
+      "related_trials": 4594,
+      "expected_max_annual_sharpe": 0.7996170743475083,
+      "deflated_sharpe_probability": 0.9389537919954722,
+      "adf_return_stationarity": "not computed: statsmodels is unavailable; daily strategy returns, not price levels, are evaluated"
+    },
+    "trade_bootstrap": {
+      "completed_trades": 17,
+      "simulations": 5000,
+      "terminal_return_percentiles": {
+        "p05": 11.082335404936387,
+        "p50": 80.4918132593321,
+        "p95": 756.0908548338392
+      },
+      "max_drawdown_percentiles": {
+        "p05": -0.25625781740915443,
+        "p50": -0.1375951167862942,
+        "p95": -0.005117341466152836
+      }
+    },
+    "open_trade": {
+      "entry_date": "2025-04-07T00:00:00",
+      "current_date": "2026-07-31T00:00:00",
+      "entry_type": "washout",
+      "conditional_asset": "NDX",
+      "return_pct": 111.58233384612069,
+      "max_drawdown_pct": 0.0,
+      "accumulated": 1847686.2783740968,
+      "buy_trigger": "washout",
+      "top1_ticker": "NVDA"
+    },
+    "score": {
+      "A_statistical_validity": 23,
+      "B_risk_adjusted_performance": 11,
+      "C_robustness_oos": 15,
+      "D_trade_quality_consistency": 16,
+      "raw_score": 65,
+      "hard_cap": 40,
+      "cap_reason": "fewer than 30 independent completed trades",
+      "final_score": 40
+    }
+  },
+  "challenger": {
+    "metrics": {
+      "total_return": 337.7370317711386,
+      "cagr": 0.26749069501748,
+      "annual_volatility": 0.23564138957046413,
+      "sharpe": 1.126244439467544,
+      "sortino": 0.9443054749804841,
+      "calmar": 0.6548923137622847,
+      "max_drawdown": -0.4084498922895815,
+      "ulcer_index": 0.0856119319772657,
+      "time_underwater": 0.8579517877366122,
+      "var_95_daily": -0.022921490157258573,
+      "cvar_95_daily": -0.035895587075226394,
+      "skewness": 0.0951084428593807,
+      "excess_kurtosis": 10.86806035620708,
+      "jarque_bera_stat": 30369.245018099184,
+      "jarque_bera_p": 0.0,
+      "autocorrelation_lags_1_10": [
+        -0.08424358940515919,
+        0.01681615970062411,
+        -0.0337641794927516,
+        0.00840195004628755,
+        -0.010209755973963048,
+        -0.03336018963508667,
+        0.0008921336837629286,
+        -0.01734750050497226,
+        0.032939309162626995,
+        0.024498553080453216
+      ],
+      "effective_daily_observations": 5295.193266769906,
+      "mean_return_t_stat": 5.1626573001132074,
+      "psr_vs_zero": 0.9999998611335412,
+      "positive_months": 0.5136054421768708,
+      "rolling_sharpe_252_min": -1.3150196202246862,
+      "rolling_sharpe_252_max": 3.053848235954298,
+      "rolling_sharpe_252_std": 0.8021079181735121,
+      "completed_trades": 17,
+      "win_rate": 0.8235294117647058,
+      "profit_factor": 42.31709294729581,
+      "expectancy": 0.45326520588078445,
+      "average_win": 0.5637146692627246,
+      "average_loss": -0.06216562323493654,
+      "payoff_ratio": 9.067948488706245,
+      "exposure": 0.7319204012295745,
+      "round_trips_per_year": 0.6917613636363636
+    },
+    "early_period": {
+      "start": "2002-01-02T00:00:00",
+      "end": "2013-12-31T00:00:00",
+      "observations": 3017,
+      "cagr": 0.23277712097393222,
+      "sharpe": 0.9971447878595187,
+      "max_drawdown": -0.4084498922895815,
+      "annual_volatility": 0.23895024789181724
+    },
+    "late_period": {
+      "start": "2014-01-02T00:00:00",
+      "end": "2026-07-31T00:00:00",
+      "observations": 3162,
+      "cagr": 0.3030351247758203,
+      "sharpe": 1.2578617439576008,
+      "max_drawdown": -0.2916244951252581,
+      "annual_volatility": 0.23246834341774156
+    },
+    "real_breadth_period": {
+      "start": "2007-01-03T00:00:00",
+      "end": "2026-07-31T00:00:00",
+      "observations": 4924,
+      "cagr": 0.3047339074801818,
+      "sharpe": 1.1904443672094431,
+      "max_drawdown": -0.4084498922895815,
+      "annual_volatility": 0.2502642893158168
+    },
+    "clean_forward_slice": {
+      "start": "2026-07-06T00:00:00",
+      "end": "2026-07-31T00:00:00",
+      "observations": 19,
+      "cagr": -0.5537936344615525,
+      "sharpe": -2.9760251276484264,
+      "max_drawdown": -0.08965643433208492,
+      "annual_volatility": 0.23690379036025808
+    },
+    "statistical_diagnostics": {
+      "ljung_box_lag": 10,
+      "ljung_box_q": 72.94994888234507,
+      "ljung_box_p": 1.1906749825836673e-11,
+      "related_trials": 4594,
+      "expected_max_annual_sharpe": 0.8036051036481175,
+      "deflated_sharpe_probability": 0.9294748229862679,
+      "adf_return_stationarity": "not computed: statsmodels is unavailable; daily strategy returns, not price levels, are evaluated"
+    },
+    "trade_bootstrap": {
+      "completed_trades": 17,
+      "simulations": 5000,
+      "terminal_return_percentiles": {
+        "p05": 14.699436579588202,
+        "p50": 146.3653383069777,
+        "p95": 2048.381049642053
+      },
+      "max_drawdown_percentiles": {
+        "p05": -0.30774251976090417,
+        "p50": -0.16797987990728502,
+        "p95": -0.008181025610639159
+      }
+    },
+    "open_trade": {
+      "entry_date": "2025-04-07T00:00:00",
+      "current_date": "2026-07-31T00:00:00",
+      "entry_type": "washout",
+      "conditional_asset": "TQQQ",
+      "return_pct": 110.50839439988343,
+      "max_drawdown_pct": 0.0,
+      "accumulated": 3387370.3177113864,
+      "buy_trigger": "washout",
+      "top1_ticker": "NVDA"
+    },
+    "score": {
+      "A_statistical_validity": 23,
+      "B_risk_adjusted_performance": 11,
+      "C_robustness_oos": 11,
+      "D_trade_quality_consistency": 16,
+      "raw_score": 61,
+      "hard_cap": 40,
+      "cap_reason": "fewer than 30 independent completed trades",
+      "final_score": 40
+    }
+  },
+  "paired_inference": {
+    "annualized_mean_difference": 0.031332965540455095,
+    "newey_west_lags": 21,
+    "hac_t_stat": 3.4845976838268973,
+    "hac_two_sided_p": 0.0004928775157146054,
+    "block_size": 21,
+    "bootstrap_simulations": 2000,
+    "bootstrap_95_interval_annualized": [
+      0.013403026056159072,
+      0.048949822720171024
+    ]
+  },
+  "robustness": {
+    "split_direction_consistent": false,
+    "sensitivity_consistent": true,
+    "cagr_deltas": {
+      "early_period": 0.03299848458538501,
+      "late_period": 0.02904474767031795,
+      "real_breadth_period": 0.036472486707597396
+    },
+    "sharpe_deltas": {
+      "early_period": -0.011330946009711185,
+      "late_period": -0.0007602102649471032,
+      "real_breadth_period": -0.011806051744419843
+    },
+    "sensitivity_cagr_deltas": {
+      "5%": 0.015190183993826878,
+      "10%": 0.03087918470265638,
+      "15%": 0.04674494008904362
+    }
+  },
+  "cost_stress": {
+    "1x": {
+      "baseline_cagr": 0.23661151031482364,
+      "challenger_cagr": 0.26749069501748,
+      "cagr_delta": 0.03087918470265638,
+      "baseline_sharpe": 1.1368303825759893,
+      "challenger_sharpe": 1.126244439467544
+    },
+    "2x": {
+      "baseline_cagr": 0.23566338128645747,
+      "challenger_cagr": 0.26652245675097785,
+      "cagr_delta": 0.03085907546452038,
+      "baseline_sharpe": 1.1332595340897047,
+      "challenger_sharpe": 1.1231281983395338
+    },
+    "5x": {
+      "baseline_cagr": 0.2328189870478221,
+      "challenger_cagr": 0.2636180839632474,
+      "cagr_delta": 0.03079909691542526,
+      "baseline_sharpe": 1.1224665750670222,
+      "challenger_sharpe": 1.113719469375368
+    },
+    "10x": {
+      "baseline_cagr": 0.22807774789560997,
+      "challenger_cagr": 0.25877809634712534,
+      "cagr_delta": 0.03070034845151537,
+      "baseline_sharpe": 1.1042134494352613,
+      "challenger_sharpe": 1.0978401551778516
+    }
+  },
+  "drag_stress": {
+    "1x": {
+      "cagr": 0.26749069501748,
+      "sharpe": 1.126244439467544,
+      "max_drawdown": -0.4084498922895815
+    },
+    "3x": {
+      "cagr": 0.26683310862668086,
+      "sharpe": 1.1248920896121053,
+      "max_drawdown": -0.4086882340923993
+    }
+  },
+  "guardrails": {
+    "raw_score_improved": false,
+    "final_score_at_least_80": false,
+    "no_hard_cap": false,
+    "historical_halves_positive": false,
+    "mdd_within_five_points": true,
+    "five_x_cost_positive": true,
+    "three_x_drag_positive_vs_baseline": true,
+    "signal_dates_unchanged": true,
+    "baseline_parity": true
+  }
+}

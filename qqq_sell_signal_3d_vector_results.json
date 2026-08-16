@@ -1,0 +1,93 @@
+{
+  "decision": "reject",
+  "hypothesis": "The three continuous inputs of the frozen bearish-divergence sell rule can predict a 126-session SPX drop of at least 20%.",
+  "method": {
+    "features": [
+      "sell_ndx_return_60_pct",
+      "sell_breadth_fall_60_points",
+      "sell_breadth_level_pct"
+    ],
+    "excluded_features": [
+      "ndx_return_60_pct",
+      "ndx_return_60_slope_20",
+      "vix",
+      "vix_slope_20",
+      "spx_drawdown_252_pct",
+      "spx_drawdown_252_slope_20"
+    ],
+    "target": "SPX future minimum return over 126 sessions <= -20%",
+    "scaling": "historical median/IQR",
+    "distance": "Euclidean after robust scaling",
+    "causal_reference": "only breadth-comparable peak episodes whose -20% breach predates the query",
+    "new_thresholds": 0
+  },
+  "data": {
+    "start": "2002-01-02T00:00:00",
+    "end": "2026-07-30T00:00:00",
+    "bars": 6180,
+    "signal_clusters": 61,
+    "causal_comparable_clusters": 48,
+    "causal_positive_clusters": 3,
+    "independent_positive_crash_episodes": 1,
+    "comparable_peak_episodes": 3
+  },
+  "classification": {
+    "full_sample_auc_hindsight_only": 0.8333333333333334,
+    "strict_causal_auc": 0.4666666666666667,
+    "true_median_causal_similarity": 0.7763571108120233,
+    "false_median_causal_similarity": 0.7907188353048226
+  },
+  "canonical_bearish_divergence_outcomes": {
+    "signals": 9,
+    "drops": 1,
+    "raw_rate": 0.1111111111111111,
+    "posterior_probability": 0.15,
+    "jeffreys_90_interval": [
+      0.01991908855633614,
+      0.36066985006432806
+    ]
+  },
+  "current": {
+    "date": "2026-07-30T00:00:00",
+    "vector": {
+      "sell_ndx_return_60_pct": 1.643761604118632,
+      "sell_breadth_fall_60_points": -14.939999999999998,
+      "sell_breadth_level_pct": 68.41
+    },
+    "conditions": {
+      "price_condition_met": false,
+      "breadth_fall_condition_met": false,
+      "breadth_cap_condition_met": false,
+      "bearish_divergence_active": false
+    },
+    "strategy_sell_state": {
+      "position": "IN",
+      "bearish_divergence_active": false,
+      "climax_top_active": false,
+      "trailing_stop_active": false,
+      "canonical_sell_reason": null,
+      "macd_cross_age_sessions": 38,
+      "extension_age_sessions": 71,
+      "drawdown_from_trade_high_pct": -8.33072412151099
+    },
+    "causal_peak_similarity_percentile": 0.4990922594487539,
+    "nearest_peak_zone_date": "2022-01-12T00:00:00",
+    "nearest_peak_episode": 4,
+    "nearest_historical_signal_date": "2016-06-21T00:00:00",
+    "nearest_historical_signal_distance": 0.13666166107028394,
+    "nearest_signal_followed_by_20pct_drop": false
+  },
+  "decision_reason": "The strict causal result has only one independent positive crash episode, so the three-dimensional sell vector cannot be validated or used for a calibrated drop prediction.",
+  "limitations": [
+    "All positive signal clusters are the same 2020 crash episode.",
+    "Pre-2007 breadth is synthetic and the 2000 peak is unavailable.",
+    "Full-sample AUC uses future peak labels and is descriptive only.",
+    "Similarity percentile is not a probability of loss.",
+    "The frozen strategy is unchanged."
+  ],
+  "artifacts": {
+    "result_json": "/Users/wongkaho/Downloads/spy500_history/qqq_sell_signal_3d_vector_results.json",
+    "signal_vectors_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_sell_signal_3d_vectors.csv",
+    "canonical_exits_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_sell_signal_3d_exits.csv"
+  }
+}

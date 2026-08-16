@@ -1,0 +1,1019 @@
+{
+  "idea_card": "/Users/wongkaho/Downloads/spy500_history/docs/research/vector_factor_grid_idea.md",
+  "configuration": {
+    "features": [
+      "spx_daily_change_pct",
+      "ndx_return_60_pct",
+      "breadth",
+      "breadth_fall_60_points",
+      "spx_drawdown_252_pct",
+      "vix"
+    ],
+    "feature_subsets": 63,
+    "thresholds": [
+      0.1,
+      0.15,
+      0.2,
+      0.25,
+      0.3,
+      0.35,
+      0.4,
+      0.45,
+      0.5
+    ],
+    "total_configurations": 567,
+    "neighbors": 15,
+    "horizon_sessions": 126,
+    "crash_drop": -0.2,
+    "split_date": "2014-01-01T00:00:00",
+    "workers": 1
+  },
+  "baseline_parity": {
+    "equity_max_absolute_difference": 0.0,
+    "trade_signatures_identical": true,
+    "open_trade_identical": true,
+    "passed": true
+  },
+  "baseline": {
+    "periods": {
+      "early": {
+        "cagr": 0.17541907509173038,
+        "sharpe": 0.960116081731377,
+        "max_drawdown": -0.3218475649818189,
+        "round_trips_per_year": 0.8337137639808263
+      },
+      "late": {
+        "cagr": 0.22518064272723914,
+        "sharpe": 1.23790683589238,
+        "max_drawdown": -0.2252864621295675,
+        "round_trips_per_year": 0.556904813766064
+      }
+    },
+    "full_metrics": {
+      "total_return": 87.53327491246371,
+      "cagr": 0.20018726691563704,
+      "annual_volatility": 0.18193378887420486,
+      "sharpe": 1.0962854467501846,
+      "sortino": 0.9301335373532023,
+      "calmar": 0.6219940390940836,
+      "max_drawdown": -0.3218475649818189,
+      "ulcer_index": 0.05807521815328558,
+      "time_underwater": 0.8517559475643308,
+      "var_95_daily": -0.01777466196985243,
+      "cvar_95_daily": -0.02740531710062323,
+      "skewness": 0.3086783377208993,
+      "excess_kurtosis": 9.901551478987264,
+      "jarque_bera_stat": 25289.606913428863,
+      "jarque_bera_p": 0.0,
+      "autocorrelation_lags_1_10": [
+        -0.09269557280308666,
+        0.008688800749567243,
+        -0.030362259922635935,
+        -0.006307568305986854,
+        -0.011619086553190027,
+        -0.03602915861204242,
+        0.007725915600051565,
+        -0.02217254515703996,
+        0.03230393117238509,
+        0.019725383543732593
+      ],
+      "effective_daily_observations": 5434.132176933315,
+      "mean_return_t_stat": 5.090828624194121,
+      "psr_vs_zero": 0.9999998377201101,
+      "positive_months": 0.5306122448979592,
+      "rolling_sharpe_252_min": -1.2106701122948609,
+      "rolling_sharpe_252_max": 3.1198159847695157,
+      "rolling_sharpe_252_std": 0.7478088829641443,
+      "completed_trades": 17,
+      "win_rate": 0.9411764705882353,
+      "profit_factor": 50.21102079773837,
+      "expectancy": 0.31286969613214977,
+      "average_win": 0.3391791254299209,
+      "average_loss": -0.10808117263218783,
+      "payoff_ratio": 3.138188799858648,
+      "exposure": 0.7308625991260722,
+      "round_trips_per_year": 0.6919155337642077
+    },
+    "crash_avoidance": [
+      {
+        "peak_date": "2007-10-09T00:00:00",
+        "breach_date": "2008-07-09T00:00:00",
+        "trough_date": "2009-03-09T00:00:00",
+        "recovery_date": "2013-03-28T00:00:00",
+        "peak_to_trough": -0.5677868642984922,
+        "exposed_peak_to_breach": true,
+        "out_at_first_20pct_breach": false,
+        "avoided_while_exposed": false,
+        "first_exit_date": null,
+        "first_exit_reason": null
+      },
+      {
+        "peak_date": "2020-02-19T00:00:00",
+        "breach_date": "2020-03-12T00:00:00",
+        "trough_date": "2020-03-23T00:00:00",
+        "recovery_date": "2020-08-18T00:00:00",
+        "peak_to_trough": -0.3392593467603803,
+        "exposed_peak_to_breach": true,
+        "out_at_first_20pct_breach": true,
+        "avoided_while_exposed": true,
+        "first_exit_date": "2020-02-26T00:00:00",
+        "first_exit_reason": "bearish-divergence"
+      },
+      {
+        "peak_date": "2022-01-03T00:00:00",
+        "breach_date": "2022-06-13T00:00:00",
+        "trough_date": "2022-10-12T00:00:00",
+        "recovery_date": "2024-01-19T00:00:00",
+        "peak_to_trough": -0.25425718217070425,
+        "exposed_peak_to_breach": false,
+        "out_at_first_20pct_breach": true,
+        "avoided_while_exposed": false,
+        "first_exit_date": null,
+        "first_exit_reason": null
+      }
+    ]
+  },
+  "early_selected": null,
+  "early_to_late_validation": {
+    "selected": false,
+    "passed": false
+  },
+  "late_selected": null,
+  "late_to_early_validation": {
+    "selected": false,
+    "passed": false
+  },
+  "diagnostic_leaders": {
+    "early": {
+      "features": "spx_daily_change_pct|spx_drawdown_252_pct|vix",
+      "feature_count": 3,
+      "threshold": 0.35,
+      "completed_trades_full": 22,
+      "early_cagr": 0.1314688403390302,
+      "early_sharpe": 0.7792137014644634,
+      "early_max_drawdown": -0.3601632245955092,
+      "early_round_trips_per_year": 1.0838278931750742,
+      "early_evaluable_crashes": 1,
+      "early_protected_crashes": 1,
+      "early_resolved_vector_exits": 6,
+      "early_true_vector_exits": 1,
+      "early_false_vector_exits": 5,
+      "early_precision": 0.1666666666666666,
+      "late_cagr": 0.1652224341768602,
+      "late_sharpe": 0.9256579767522638,
+      "late_max_drawdown": -0.2545897447339297,
+      "late_round_trips_per_year": 0.7160204748420823,
+      "late_evaluable_crashes": 2,
+      "late_protected_crashes": 0,
+      "late_resolved_vector_exits": 7,
+      "late_true_vector_exits": 0,
+      "late_false_vector_exits": 7,
+      "late_precision": 0.0,
+      "early_guardrails_pass": false,
+      "late_guardrails_pass": false
+    },
+    "late": {
+      "features": "spx_daily_change_pct|breadth_fall_60_points",
+      "feature_count": 2,
+      "threshold": 0.4,
+      "completed_trades_full": 17,
+      "early_cagr": 0.126322727629772,
+      "early_sharpe": 0.7438353517431727,
+      "early_max_drawdown": -0.4692825611637333,
+      "early_round_trips_per_year": 1.1671992695731568,
+      "early_evaluable_crashes": 1,
+      "early_protected_crashes": 0,
+      "early_resolved_vector_exits": 6,
+      "early_true_vector_exits": 0,
+      "early_false_vector_exits": 6,
+      "early_precision": 0.0,
+      "late_cagr": 0.2113293045336863,
+      "late_sharpe": 1.0753101874656914,
+      "late_max_drawdown": -0.2298679665490889,
+      "late_round_trips_per_year": 0.2386734916140274,
+      "late_evaluable_crashes": 2,
+      "late_protected_crashes": 1,
+      "late_resolved_vector_exits": 1,
+      "late_true_vector_exits": 1,
+      "late_false_vector_exits": 0,
+      "late_precision": 1.0,
+      "early_guardrails_pass": false,
+      "late_guardrails_pass": false
+    },
+    "consensus": {
+      "features": "breadth|spx_drawdown_252_pct|vix",
+      "feature_count": 3,
+      "threshold": 0.3,
+      "completed_trades_full": 26,
+      "early_cagr": 0.1075102787147117,
+      "early_sharpe": 0.7153982484285494,
+      "early_max_drawdown": -0.3270750339349405,
+      "early_round_trips_per_year": 1.333942022369322,
+      "early_evaluable_crashes": 1,
+      "early_protected_crashes": 1,
+      "early_resolved_vector_exits": 9,
+      "early_true_vector_exits": 1,
+      "early_false_vector_exits": 8,
+      "early_precision": 0.1111111111111111,
+      "late_cagr": 0.1669862792427587,
+      "late_sharpe": 1.0042318908224936,
+      "late_max_drawdown": -0.2727395437617533,
+      "late_round_trips_per_year": 0.7955783053800914,
+      "late_evaluable_crashes": 2,
+      "late_protected_crashes": 1,
+      "late_resolved_vector_exits": 10,
+      "late_true_vector_exits": 1,
+      "late_false_vector_exits": 9,
+      "late_precision": 0.1,
+      "early_guardrails_pass": false,
+      "late_guardrails_pass": false,
+      "total_false_exits": 17,
+      "worst_cagr_gap": -0.06790879637701869,
+      "worst_drawdown_gap": -0.04745308163218581
+    }
+  },
+  "selected_details": {
+    "early_selected": null,
+    "late_selected": null,
+    "diagnostic_early": {
+      "threshold": 0.35,
+      "metrics": {
+        "total_return": 28.83255871122473,
+        "cagr": 0.14820980462813238,
+        "annual_volatility": 0.18176430637059715,
+        "sharpe": 0.8531352451336386,
+        "sortino": 0.7149734288571856,
+        "calmar": 0.41150732364355996,
+        "max_drawdown": -0.3601632245955092,
+        "ulcer_index": 0.07360320361847335,
+        "time_underwater": 0.8593623563683443,
+        "var_95_daily": -0.018288850749709838,
+        "cvar_95_daily": -0.028108693031617546,
+        "skewness": -0.0534693296544447,
+        "excess_kurtosis": 8.869002193194513,
+        "jarque_bera_stat": 20213.94746065152,
+        "jarque_bera_p": 0.0,
+        "autocorrelation_lags_1_10": [
+          -0.06548257380495642,
+          -0.0011463198979703158,
+          -0.008898966808692465,
+          -0.007259829858402928,
+          -0.015265706021750702,
+          -0.012922864016101644,
+          0.009742610516878192,
+          -0.033433216548490616,
+          0.01905632800222544,
+          0.01843386523668021
+        ],
+        "effective_daily_observations": 5644.763944704131,
+        "mean_return_t_stat": 4.037760045439022,
+        "psr_vs_zero": 0.9999703942114225,
+        "positive_months": 0.5408163265306123,
+        "rolling_sharpe_252_min": -1.5992425571976367,
+        "rolling_sharpe_252_max": 3.075160395669675,
+        "rolling_sharpe_252_std": 0.7919910189771994,
+        "completed_trades": 22,
+        "win_rate": 0.8181818181818182,
+        "profit_factor": 11.503866378272674,
+        "expectancy": 0.16646999337960344,
+        "average_win": 0.22283365212085726,
+        "average_loss": -0.08716647095603892,
+        "payoff_ratio": 2.5564147507272605,
+        "exposure": 0.7642013270755785,
+        "round_trips_per_year": 0.8954201025183864
+      },
+      "crash_avoidance": [
+        {
+          "peak_date": "2007-10-09T00:00:00",
+          "breach_date": "2008-07-09T00:00:00",
+          "trough_date": "2009-03-09T00:00:00",
+          "recovery_date": "2013-03-28T00:00:00",
+          "peak_to_trough": -0.5677868642984922,
+          "exposed_peak_to_breach": true,
+          "out_at_first_20pct_breach": true,
+          "avoided_while_exposed": true,
+          "first_exit_date": "2008-01-07T00:00:00",
+          "first_exit_reason": "vector-crash"
+        },
+        {
+          "peak_date": "2020-02-19T00:00:00",
+          "breach_date": "2020-03-12T00:00:00",
+          "trough_date": "2020-03-23T00:00:00",
+          "recovery_date": "2020-08-18T00:00:00",
+          "peak_to_trough": -0.3392593467603803,
+          "exposed_peak_to_breach": true,
+          "out_at_first_20pct_breach": false,
+          "avoided_while_exposed": false,
+          "first_exit_date": null,
+          "first_exit_reason": null
+        },
+        {
+          "peak_date": "2022-01-03T00:00:00",
+          "breach_date": "2022-06-13T00:00:00",
+          "trough_date": "2022-10-12T00:00:00",
+          "recovery_date": "2024-01-19T00:00:00",
+          "peak_to_trough": -0.25425718217070425,
+          "exposed_peak_to_breach": true,
+          "out_at_first_20pct_breach": true,
+          "avoided_while_exposed": true,
+          "first_exit_date": "2022-03-21T00:00:00",
+          "first_exit_reason": "climax-top"
+        }
+      ],
+      "false_exits": {
+        "vector_exits": 13,
+        "false_vector_exits": 12,
+        "precision": 0.07692307692307687,
+        "outcomes": [
+          {
+            "signal_date": "2004-03-26T00:00:00",
+            "exit_date": "2004-03-29T00:00:00",
+            "future_min_return_126": -0.040519808681526825,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2008-01-04T00:00:00",
+            "exit_date": "2008-01-07T00:00:00",
+            "future_min_return_126": -0.11285066591102288,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2008-03-18T00:00:00",
+            "exit_date": "2008-03-19T00:00:00",
+            "future_min_return_126": -0.1037048170136019,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2008-06-10T00:00:00",
+            "exit_date": "2008-06-11T00:00:00",
+            "future_min_return_126": -0.44611307420494706,
+            "followed_by_20pct_drop": true
+          },
+          {
+            "signal_date": "2009-07-22T00:00:00",
+            "exit_date": "2009-07-23T00:00:00",
+            "future_min_return_126": 0.022010271460014774,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2010-05-27T00:00:00",
+            "exit_date": "2010-05-28T00:00:00",
+            "future_min_return_126": -0.07297615809990021,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2016-01-27T00:00:00",
+            "exit_date": "2016-01-28T00:00:00",
+            "future_min_return_126": -0.02862453531598519,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2018-11-23T00:00:00",
+            "exit_date": "2018-11-26T00:00:00",
+            "future_min_return_126": -0.10692851173744589,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2019-01-03T00:00:00",
+            "exit_date": "2019-01-04T00:00:00",
+            "future_min_return_126": 0.0343151272519302,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2020-04-02T00:00:00",
+            "exit_date": "2020-04-03T00:00:00",
+            "future_min_return_126": -0.015117337449048307,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2022-07-08T00:00:00",
+            "exit_date": "2022-07-11T00:00:00",
+            "future_min_return_126": -0.08266698808528528,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2022-10-31T00:00:00",
+            "exit_date": "2022-11-01T00:00:00",
+            "future_min_return_126": -0.039279645039488886,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2023-02-06T00:00:00",
+            "exit_date": "2023-02-07T00:00:00",
+            "future_min_return_126": -0.062105334851182636,
+            "followed_by_20pct_drop": false
+          }
+        ]
+      },
+      "early_period": {
+        "start": "2002-01-02T00:00:00",
+        "end": "2013-12-31T00:00:00",
+        "observations": 3017,
+        "cagr": 0.13146884033903028,
+        "sharpe": 0.7792137014644634,
+        "max_drawdown": -0.3601632245955092,
+        "annual_volatility": 0.17949599571591499
+      },
+      "late_period": {
+        "start": "2014-01-02T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 3160,
+        "cagr": 0.16522243417686022,
+        "sharpe": 0.9256579767522638,
+        "max_drawdown": -0.2545897447339297,
+        "annual_volatility": 0.18394004159553487
+      },
+      "real_breadth_period": {
+        "start": "2007-01-03T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 4922,
+        "cagr": 0.15751550117616997,
+        "sharpe": 0.8805103237067777,
+        "max_drawdown": -0.3601632245955092,
+        "annual_volatility": 0.18620146936096807
+      },
+      "features": [
+        "spx_daily_change_pct",
+        "spx_drawdown_252_pct",
+        "vix"
+      ],
+      "paired_inference": {
+        "annualized_mean_difference": -0.04438182894288626,
+        "newey_west_lags": 21,
+        "hac_t_stat": -1.8602481051872046,
+        "hac_two_sided_p": 0.06285043194288262,
+        "block_size": 21,
+        "bootstrap_simulations": 2000,
+        "bootstrap_95_interval_annualized": [
+          -0.09135822088954652,
+          0.0003132541259715839
+        ]
+      },
+      "current_probability": 0.05974800232614534,
+      "current_signal": false,
+      "grid_row": {
+        "features": "spx_daily_change_pct|spx_drawdown_252_pct|vix",
+        "feature_count": 3,
+        "threshold": 0.35,
+        "completed_trades_full": 22,
+        "early_cagr": 0.1314688403390302,
+        "early_sharpe": 0.7792137014644634,
+        "early_max_drawdown": -0.3601632245955092,
+        "early_round_trips_per_year": 1.0838278931750742,
+        "early_evaluable_crashes": 1,
+        "early_protected_crashes": 1,
+        "early_resolved_vector_exits": 6,
+        "early_true_vector_exits": 1,
+        "early_false_vector_exits": 5,
+        "early_precision": 0.1666666666666666,
+        "late_cagr": 0.1652224341768602,
+        "late_sharpe": 0.9256579767522638,
+        "late_max_drawdown": -0.2545897447339297,
+        "late_round_trips_per_year": 0.7160204748420823,
+        "late_evaluable_crashes": 2,
+        "late_protected_crashes": 0,
+        "late_resolved_vector_exits": 7,
+        "late_true_vector_exits": 0,
+        "late_false_vector_exits": 7,
+        "late_precision": 0.0,
+        "early_guardrails_pass": false,
+        "late_guardrails_pass": false
+      },
+      "cost_stress": {
+        "1": {
+          "baseline_cagr": 0.20018726691563704,
+          "candidate_cagr": 0.14820980462813238
+        },
+        "5": {
+          "baseline_cagr": 0.1963995797571254,
+          "candidate_cagr": 0.14354244718300757
+        }
+      }
+    },
+    "diagnostic_late": {
+      "threshold": 0.4,
+      "metrics": {
+        "total_return": 45.00261492632124,
+        "cagr": 0.1686292922033794,
+        "annual_volatility": 0.18999382363379985,
+        "sharpe": 0.9171249201714199,
+        "sortino": 0.8103821987171872,
+        "calmar": 0.35933423945098275,
+        "max_drawdown": -0.46928256116373335,
+        "ulcer_index": 0.0888517855088765,
+        "time_underwater": 0.860333387279495,
+        "var_95_daily": -0.019304648986495494,
+        "cvar_95_daily": -0.028469924203381146,
+        "skewness": 0.13223070817355295,
+        "excess_kurtosis": 7.761500505858736,
+        "jarque_bera_stat": 15496.042794980007,
+        "jarque_bera_p": 0.0,
+        "autocorrelation_lags_1_10": [
+          -0.06530296134682013,
+          -0.01155227626270107,
+          -0.023284091636529263,
+          -0.028923320498023184,
+          -0.008474131695442698,
+          -0.01448708225707762,
+          0.006558108807993857,
+          -0.026467868504596103,
+          0.024183551011269205,
+          0.013272338098723514
+        ],
+        "effective_daily_observations": 5678.162716073504,
+        "mean_return_t_stat": 4.353435764241999,
+        "psr_vs_zero": 0.9999932534448331,
+        "positive_months": 0.5544217687074829,
+        "rolling_sharpe_252_min": -2.156197313735473,
+        "rolling_sharpe_252_max": 3.0751603956697005,
+        "rolling_sharpe_252_std": 0.8253313697949382,
+        "completed_trades": 17,
+        "win_rate": 0.8823529411764706,
+        "profit_factor": 20.497863170887367,
+        "expectancy": 0.26511928177931576,
+        "average_win": 0.31587885004697636,
+        "average_loss": -0.11557748022813849,
+        "payoff_ratio": 2.7330484227849823,
+        "exposure": 0.8240815665965366,
+        "round_trips_per_year": 0.6919155337642077
+      },
+      "crash_avoidance": [
+        {
+          "peak_date": "2007-10-09T00:00:00",
+          "breach_date": "2008-07-09T00:00:00",
+          "trough_date": "2009-03-09T00:00:00",
+          "recovery_date": "2013-03-28T00:00:00",
+          "peak_to_trough": -0.5677868642984922,
+          "exposed_peak_to_breach": true,
+          "out_at_first_20pct_breach": false,
+          "avoided_while_exposed": false,
+          "first_exit_date": "2008-03-11T00:00:00",
+          "first_exit_reason": "trailing-stop"
+        },
+        {
+          "peak_date": "2020-02-19T00:00:00",
+          "breach_date": "2020-03-12T00:00:00",
+          "trough_date": "2020-03-23T00:00:00",
+          "recovery_date": "2020-08-18T00:00:00",
+          "peak_to_trough": -0.3392593467603803,
+          "exposed_peak_to_breach": true,
+          "out_at_first_20pct_breach": true,
+          "avoided_while_exposed": true,
+          "first_exit_date": "2020-03-05T00:00:00",
+          "first_exit_reason": "vector-crash"
+        },
+        {
+          "peak_date": "2022-01-03T00:00:00",
+          "breach_date": "2022-06-13T00:00:00",
+          "trough_date": "2022-10-12T00:00:00",
+          "recovery_date": "2024-01-19T00:00:00",
+          "peak_to_trough": -0.25425718217070425,
+          "exposed_peak_to_breach": true,
+          "out_at_first_20pct_breach": true,
+          "avoided_while_exposed": true,
+          "first_exit_date": "2022-03-21T00:00:00",
+          "first_exit_reason": "climax-top"
+        }
+      ],
+      "false_exits": {
+        "vector_exits": 7,
+        "false_vector_exits": 6,
+        "precision": 0.1428571428571429,
+        "outcomes": [
+          {
+            "signal_date": "2009-04-09T00:00:00",
+            "exit_date": "2009-04-13T00:00:00",
+            "future_min_return_126": -0.028251225776325106,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2009-10-30T00:00:00",
+            "exit_date": "2009-11-02T00:00:00",
+            "future_min_return_126": 0.006465933217525643,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2010-05-27T00:00:00",
+            "exit_date": "2010-05-28T00:00:00",
+            "future_min_return_126": -0.07297615809990021,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2011-06-06T00:00:00",
+            "exit_date": "2011-06-07T00:00:00",
+            "future_min_return_126": -0.1453895195148499,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2011-11-28T00:00:00",
+            "exit_date": "2011-11-29T00:00:00",
+            "future_min_return_126": 0.0022641509433962703,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2012-05-14T00:00:00",
+            "exit_date": "2012-05-15T00:00:00",
+            "future_min_return_126": -0.04505716207128441,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2020-03-04T00:00:00",
+            "exit_date": "2020-03-05T00:00:00",
+            "future_min_return_126": -0.28519855595667865,
+            "followed_by_20pct_drop": true
+          }
+        ]
+      },
+      "early_period": {
+        "start": "2002-01-02T00:00:00",
+        "end": "2013-12-31T00:00:00",
+        "observations": 3017,
+        "cagr": 0.12632272762977204,
+        "sharpe": 0.7438353517431727,
+        "max_drawdown": -0.46928256116373335,
+        "annual_volatility": 0.1826456295987125
+      },
+      "late_period": {
+        "start": "2014-01-02T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 3160,
+        "cagr": 0.21132930453368637,
+        "sharpe": 1.0753101874656914,
+        "max_drawdown": -0.22986796654908892,
+        "annual_volatility": 0.19676827228263435
+      },
+      "real_breadth_period": {
+        "start": "2007-01-03T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 4922,
+        "cagr": 0.18277996748463088,
+        "sharpe": 0.9584076925722789,
+        "max_drawdown": -0.46928256116373335,
+        "annual_volatility": 0.19545889405523936
+      },
+      "features": [
+        "spx_daily_change_pct",
+        "breadth_fall_60_points"
+      ],
+      "paired_inference": {
+        "annualized_mean_difference": -0.025203294681699864,
+        "newey_west_lags": 21,
+        "hac_t_stat": -1.3056048129880835,
+        "hac_two_sided_p": 0.19168698275557883,
+        "block_size": 21,
+        "bootstrap_simulations": 2000,
+        "bootstrap_95_interval_annualized": [
+          -0.06672562353375332,
+          0.01099402363950154
+        ]
+      },
+      "current_probability": 0.2030723871362194,
+      "current_signal": false,
+      "grid_row": {
+        "features": "spx_daily_change_pct|breadth_fall_60_points",
+        "feature_count": 2,
+        "threshold": 0.4,
+        "completed_trades_full": 17,
+        "early_cagr": 0.126322727629772,
+        "early_sharpe": 0.7438353517431727,
+        "early_max_drawdown": -0.4692825611637333,
+        "early_round_trips_per_year": 1.1671992695731568,
+        "early_evaluable_crashes": 1,
+        "early_protected_crashes": 0,
+        "early_resolved_vector_exits": 6,
+        "early_true_vector_exits": 0,
+        "early_false_vector_exits": 6,
+        "early_precision": 0.0,
+        "late_cagr": 0.2113293045336863,
+        "late_sharpe": 1.0753101874656914,
+        "late_max_drawdown": -0.2298679665490889,
+        "late_round_trips_per_year": 0.2386734916140274,
+        "late_evaluable_crashes": 2,
+        "late_protected_crashes": 1,
+        "late_resolved_vector_exits": 1,
+        "late_true_vector_exits": 1,
+        "late_false_vector_exits": 0,
+        "late_precision": 1.0,
+        "early_guardrails_pass": false,
+        "late_guardrails_pass": false
+      },
+      "cost_stress": {
+        "1": {
+          "baseline_cagr": 0.20018726691563704,
+          "candidate_cagr": 0.1686292922033794
+        },
+        "5": {
+          "baseline_cagr": 0.1963995797571254,
+          "candidate_cagr": 0.16485471616068592
+        }
+      }
+    },
+    "diagnostic_consensus": {
+      "threshold": 0.3,
+      "metrics": {
+        "total_return": 22.521252704633895,
+        "cagr": 0.13715507366989588,
+        "annual_volatility": 0.16483331489505373,
+        "sharpe": 0.864039256026103,
+        "sortino": 0.6617123686766344,
+        "calmar": 0.4193382540386063,
+        "max_drawdown": -0.32707503393494053,
+        "ulcer_index": 0.06778494557405706,
+        "time_underwater": 0.8446350542158926,
+        "var_95_daily": -0.015815909655524957,
+        "cvar_95_daily": -0.025984902043684827,
+        "skewness": 0.07983425396285251,
+        "excess_kurtosis": 13.027304716340844,
+        "jarque_bera_stat": 43615.73866089091,
+        "jarque_bera_p": 0.0,
+        "autocorrelation_lags_1_10": [
+          -0.06966660377429165,
+          0.00991278336201163,
+          0.014280524538768468,
+          0.0026235307828872934,
+          -0.020790255145416853,
+          -0.02001188373971563,
+          0.01595033816753782,
+          -0.03396797422069742,
+          0.03112149429026533,
+          0.025247843587049935
+        ],
+        "effective_daily_observations": 5155.753194911983,
+        "mean_return_t_stat": 3.90822234710234,
+        "psr_vs_zero": 0.9999508305108038,
+        "positive_months": 0.4421768707482993,
+        "rolling_sharpe_252_min": -1.0501416718440364,
+        "rolling_sharpe_252_max": 3.408490912941754,
+        "rolling_sharpe_252_std": 0.8360667652764576,
+        "completed_trades": 26,
+        "win_rate": 0.6923076923076923,
+        "profit_factor": 9.106737570571081,
+        "expectancy": 0.15126055280571396,
+        "average_win": 0.2454388081993796,
+        "average_loss": -0.06064052183003375,
+        "payoff_ratio": 4.047438920253813,
+        "exposure": 0.6180611749474025,
+        "round_trips_per_year": 1.0582237575217295
+      },
+      "crash_avoidance": [
+        {
+          "peak_date": "2007-10-09T00:00:00",
+          "breach_date": "2008-07-09T00:00:00",
+          "trough_date": "2009-03-09T00:00:00",
+          "recovery_date": "2013-03-28T00:00:00",
+          "peak_to_trough": -0.5677868642984922,
+          "exposed_peak_to_breach": true,
+          "out_at_first_20pct_breach": true,
+          "avoided_while_exposed": true,
+          "first_exit_date": "2008-06-09T00:00:00",
+          "first_exit_reason": "vector-crash"
+        },
+        {
+          "peak_date": "2020-02-19T00:00:00",
+          "breach_date": "2020-03-12T00:00:00",
+          "trough_date": "2020-03-23T00:00:00",
+          "recovery_date": "2020-08-18T00:00:00",
+          "peak_to_trough": -0.3392593467603803,
+          "exposed_peak_to_breach": true,
+          "out_at_first_20pct_breach": false,
+          "avoided_while_exposed": false,
+          "first_exit_date": null,
+          "first_exit_reason": null
+        },
+        {
+          "peak_date": "2022-01-03T00:00:00",
+          "breach_date": "2022-06-13T00:00:00",
+          "trough_date": "2022-10-12T00:00:00",
+          "recovery_date": "2024-01-19T00:00:00",
+          "peak_to_trough": -0.25425718217070425,
+          "exposed_peak_to_breach": true,
+          "out_at_first_20pct_breach": true,
+          "avoided_while_exposed": true,
+          "first_exit_date": "2022-01-12T00:00:00",
+          "first_exit_reason": "vector-crash"
+        }
+      ],
+      "false_exits": {
+        "vector_exits": 19,
+        "false_vector_exits": 17,
+        "precision": 0.10526315789473684,
+        "outcomes": [
+          {
+            "signal_date": "2004-03-26T00:00:00",
+            "exit_date": "2004-03-29T00:00:00",
+            "future_min_return_126": -0.040519808681526825,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2004-05-27T00:00:00",
+            "exit_date": "2004-05-28T00:00:00",
+            "future_min_return_126": -0.051814857754392096,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2007-03-05T00:00:00",
+            "exit_date": "2007-03-06T00:00:00",
+            "future_min_return_126": 0.0028382213812678803,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2008-06-06T00:00:00",
+            "exit_date": "2008-06-09T00:00:00",
+            "future_min_return_126": -0.4470493128536783,
+            "followed_by_20pct_drop": true
+          },
+          {
+            "signal_date": "2009-07-24T00:00:00",
+            "exit_date": "2009-07-27T00:00:00",
+            "future_min_return_126": -0.0042887776983558945,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2010-05-27T00:00:00",
+            "exit_date": "2010-05-28T00:00:00",
+            "future_min_return_126": -0.07297615809990021,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2010-09-09T00:00:00",
+            "exit_date": "2010-09-10T00:00:00",
+            "future_min_return_126": 0.0047998550987140565,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2011-08-08T00:00:00",
+            "exit_date": "2011-08-09T00:00:00",
+            "future_min_return_126": -0.018133095131755206,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2011-10-03T00:00:00",
+            "exit_date": "2011-10-04T00:00:00",
+            "future_min_return_126": 0.022561863173216734,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2019-01-03T00:00:00",
+            "exit_date": "2019-01-04T00:00:00",
+            "future_min_return_126": 0.0343151272519302,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2020-03-12T00:00:00",
+            "exit_date": "2020-03-13T00:00:00",
+            "future_min_return_126": -0.09804079658147213,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2020-04-01T00:00:00",
+            "exit_date": "2020-04-02T00:00:00",
+            "future_min_return_126": 0.007366929771301267,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2022-01-11T00:00:00",
+            "exit_date": "2022-01-12T00:00:00",
+            "future_min_return_126": -0.22200462540578392,
+            "followed_by_20pct_drop": true
+          },
+          {
+            "signal_date": "2022-06-22T00:00:00",
+            "exit_date": "2022-06-23T00:00:00",
+            "future_min_return_126": -0.04863440153834275,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2022-09-28T00:00:00",
+            "exit_date": "2022-09-29T00:00:00",
+            "future_min_return_126": -0.038184585269316784,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2022-10-19T00:00:00",
+            "exit_date": "2022-10-20T00:00:00",
+            "future_min_return_126": -0.007950941231232078,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2023-01-30T00:00:00",
+            "exit_date": "2023-01-31T00:00:00",
+            "future_min_return_126": -0.04032336345783849,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2023-03-21T00:00:00",
+            "exit_date": "2023-03-22T00:00:00",
+            "future_min_return_126": -0.01646318766285193,
+            "followed_by_20pct_drop": false
+          },
+          {
+            "signal_date": "2024-02-21T00:00:00",
+            "exit_date": "2024-02-22T00:00:00",
+            "future_min_return_126": -0.0029246457103859758,
+            "followed_by_20pct_drop": false
+          }
+        ]
+      },
+      "early_period": {
+        "start": "2002-01-02T00:00:00",
+        "end": "2013-12-31T00:00:00",
+        "observations": 3017,
+        "cagr": 0.10751027871471175,
+        "sharpe": 0.7153982484285494,
+        "max_drawdown": -0.32707503393494053,
+        "annual_volatility": 0.16113962559017056
+      },
+      "late_period": {
+        "start": "2014-01-02T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 3160,
+        "cagr": 0.16698627924275877,
+        "sharpe": 1.0042318908224936,
+        "max_drawdown": -0.27273954376175336,
+        "annual_volatility": 0.16830159421326124
+      },
+      "real_breadth_period": {
+        "start": "2007-01-03T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 4922,
+        "cagr": 0.14458043179179403,
+        "sharpe": 0.8851951367387934,
+        "max_drawdown": -0.32707503393494053,
+        "annual_volatility": 0.16902847000805754
+      },
+      "features": [
+        "breadth",
+        "spx_drawdown_252_pct",
+        "vix"
+      ],
+      "paired_inference": {
+        "annualized_mean_difference": -0.05702891024467283,
+        "newey_west_lags": 21,
+        "hac_t_stat": -2.4812341432814584,
+        "hac_two_sided_p": 0.013092833792143472,
+        "block_size": 21,
+        "bootstrap_simulations": 2000,
+        "bootstrap_95_interval_annualized": [
+          -0.1017247741070775,
+          -0.014054059327097778
+        ]
+      },
+      "current_probability": 0.12712193522766924,
+      "current_signal": false,
+      "grid_row": {
+        "features": "breadth|spx_drawdown_252_pct|vix",
+        "feature_count": 3,
+        "threshold": 0.3,
+        "completed_trades_full": 26,
+        "early_cagr": 0.1075102787147117,
+        "early_sharpe": 0.7153982484285494,
+        "early_max_drawdown": -0.3270750339349405,
+        "early_round_trips_per_year": 1.333942022369322,
+        "early_evaluable_crashes": 1,
+        "early_protected_crashes": 1,
+        "early_resolved_vector_exits": 9,
+        "early_true_vector_exits": 1,
+        "early_false_vector_exits": 8,
+        "early_precision": 0.1111111111111111,
+        "late_cagr": 0.1669862792427587,
+        "late_sharpe": 1.0042318908224936,
+        "late_max_drawdown": -0.2727395437617533,
+        "late_round_trips_per_year": 0.7955783053800914,
+        "late_evaluable_crashes": 2,
+        "late_protected_crashes": 1,
+        "late_resolved_vector_exits": 10,
+        "late_true_vector_exits": 1,
+        "late_false_vector_exits": 9,
+        "late_precision": 0.1,
+        "early_guardrails_pass": false,
+        "late_guardrails_pass": false,
+        "total_false_exits": 17,
+        "worst_cagr_gap": -0.06790879637701869,
+        "worst_drawdown_gap": -0.04745308163218581
+      },
+      "cost_stress": {
+        "1": {
+          "baseline_cagr": 0.20018726691563704,
+          "candidate_cagr": 0.13715507366989588
+        },
+        "5": {
+          "baseline_cagr": 0.1963995797571254,
+          "candidate_cagr": 0.13171691230851046
+        }
+      }
+    }
+  },
+  "decision": "reject",
+  "limitations": [
+    "Only three independent SPX 20% episodes occur in the strategy sample.",
+    "All 567 configurations are historically selected and require a large multiple-testing penalty.",
+    "The two half-splits are pseudo-out-of-sample; data through 2026-07-02 were previously seen.",
+    "Pre-2007 breadth is a synthetic MMTH-mapped splice.",
+    "No resolved 126-session clean forward label exists after the 2026-07-05 freeze."
+  ],
+  "artifacts": {
+    "grid_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_vector_factor_grid.csv",
+    "selected_probabilities_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_vector_factor_probabilities.csv",
+    "results_json": "/Users/wongkaho/Downloads/spy500_history/qqq_vector_factor_grid_results.json"
+  }
+}

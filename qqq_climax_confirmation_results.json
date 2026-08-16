@@ -1,0 +1,831 @@
+{
+  "idea_card": "/Users/wongkaho/Downloads/spy500_history/docs/research/climax_price_confirmation_idea.md",
+  "configuration": {
+    "primary_pullback_confirmation_pct": 3.0,
+    "sensitivity_pullback_pct": [
+      2.0,
+      3.0,
+      4.0
+    ],
+    "trailing_high_window_sessions": 10,
+    "unchanged_climax_extension_pct": 5.0,
+    "unchanged_climax_vote_window": 10,
+    "signal_timing": "close",
+    "fill_timing": "next-session open",
+    "retained_exits": [
+      "bearish-divergence",
+      "25% trailing-stop"
+    ],
+    "attempted_variants": 3
+  },
+  "data": {
+    "start": "2002-01-02T00:00:00",
+    "end": "2026-07-29T00:00:00",
+    "bars": 6179,
+    "real_breadth_start": "2007-01-01",
+    "clean_forward_oos_start": "2026-07-05",
+    "clean_forward_oos_bars": 18
+  },
+  "baseline_parity": {
+    "equity_max_absolute_difference": 0.0,
+    "trade_signatures_identical": true,
+    "open_trade_identical": true,
+    "passed": true
+  },
+  "baseline": {
+    "metrics": {
+      "total_return": 87.53327491246371,
+      "cagr": 0.20018726691563704,
+      "annual_volatility": 0.18193378887420486,
+      "sharpe": 1.0962854467501846,
+      "sortino": 0.9301335373532023,
+      "calmar": 0.6219940390940836,
+      "max_drawdown": -0.3218475649818189,
+      "ulcer_index": 0.05807521815328558,
+      "time_underwater": 0.8517559475643308,
+      "var_95_daily": -0.01777466196985243,
+      "cvar_95_daily": -0.02740531710062323,
+      "skewness": 0.3086783377208993,
+      "excess_kurtosis": 9.901551478987264,
+      "jarque_bera_stat": 25289.606913428863,
+      "jarque_bera_p": 0.0,
+      "autocorrelation_lags_1_10": [
+        -0.09269557280308666,
+        0.008688800749567243,
+        -0.030362259922635935,
+        -0.006307568305986854,
+        -0.011619086553190027,
+        -0.03602915861204242,
+        0.007725915600051565,
+        -0.02217254515703996,
+        0.03230393117238509,
+        0.019725383543732593
+      ],
+      "effective_daily_observations": 5434.132176933315,
+      "mean_return_t_stat": 5.090828624194121,
+      "psr_vs_zero": 0.9999998377201101,
+      "positive_months": 0.5306122448979592,
+      "rolling_sharpe_252_min": -1.2106701122948609,
+      "rolling_sharpe_252_max": 3.1198159847695157,
+      "rolling_sharpe_252_std": 0.7478088829641443,
+      "completed_trades": 17,
+      "win_rate": 0.9411764705882353,
+      "profit_factor": 50.21102079773837,
+      "expectancy": 0.31286969613214977,
+      "average_win": 0.3391791254299209,
+      "average_loss": -0.10808117263218783,
+      "payoff_ratio": 3.138188799858648,
+      "exposure": 0.7308625991260722,
+      "round_trips_per_year": 0.6919155337642077
+    },
+    "early_period": {
+      "start": "2002-01-02T00:00:00",
+      "end": "2013-12-31T00:00:00",
+      "observations": 3017,
+      "cagr": 0.17541907509173038,
+      "sharpe": 0.960116081731377,
+      "max_drawdown": -0.3218475649818189,
+      "annual_volatility": 0.186845900564084
+    },
+    "late_period": {
+      "start": "2014-01-02T00:00:00",
+      "end": "2026-07-29T00:00:00",
+      "observations": 3160,
+      "cagr": 0.22518064272723914,
+      "sharpe": 1.23790683589238,
+      "max_drawdown": -0.2252864621295675,
+      "annual_volatility": 0.17715032988417406
+    },
+    "real_breadth_period": {
+      "start": "2007-01-03T00:00:00",
+      "end": "2026-07-29T00:00:00",
+      "observations": 4922,
+      "cagr": 0.2238887705173911,
+      "sharpe": 1.1668740946973228,
+      "max_drawdown": -0.3218475649818189,
+      "annual_volatility": 0.18877285743423117
+    },
+    "clean_forward_slice": {
+      "start": "2026-07-06T00:00:00",
+      "end": "2026-07-29T00:00:00",
+      "observations": 17,
+      "cagr": -0.7675006932617524,
+      "sharpe": -6.469528662145761,
+      "max_drawdown": -0.0882746115605273,
+      "annual_volatility": 0.2068157830900843
+    },
+    "exit_reason_counts": {
+      "climax-top": 7,
+      "bearish-divergence": 9,
+      "trailing-stop": 1
+    },
+    "climax_exit_future_paths": [
+      {
+        "exit_date": "2002-08-15T00:00:00",
+        "trade_return_pct": 11.266436389334928,
+        "future_max_return_pct": 15.5852280302331,
+        "future_min_return_pct": -17.48043770318638,
+        "future_60_return_pct": 3.420197110010359,
+        "future_126_return_pct": 0.7178824518762283
+      },
+      {
+        "exit_date": "2002-11-12T00:00:00",
+        "trade_return_pct": 21.249727099487348,
+        "future_max_return_pct": 18.37040052928902,
+        "future_min_return_pct": -3.109573006259869,
+        "future_60_return_pct": -1.2713115171255507,
+        "future_126_return_pct": 18.37040052928902
+      },
+      {
+        "exit_date": "2003-03-18T00:00:00",
+        "trade_return_pct": 1.3553900874935836,
+        "future_max_return_pct": 28.962150097647175,
+        "future_min_return_pct": -5.267367246349853,
+        "future_60_return_pct": 14.323444620106018,
+        "future_126_return_pct": 28.59853064261135
+      },
+      {
+        "exit_date": "2008-11-05T00:00:00",
+        "trade_return_pct": 5.178220440872035,
+        "future_max_return_pct": 5.01095733258814,
+        "future_min_return_pct": -23.775940933358818,
+        "future_60_return_pct": -10.601403126884435,
+        "future_126_return_pct": 2.5253342354135233
+      },
+      {
+        "exit_date": "2009-01-14T00:00:00",
+        "trade_return_pct": 6.924540387985798,
+        "future_max_return_pct": 28.30569611164142,
+        "future_min_return_pct": -11.819663960668702,
+        "future_60_return_pct": 12.914452732325854,
+        "future_126_return_pct": 28.30569611164142
+      },
+      {
+        "exit_date": "2009-02-18T00:00:00",
+        "trade_return_pct": 2.1030798495609764,
+        "future_max_return_pct": 36.415415155500085,
+        "future_min_return_pct": -12.56564675137577,
+        "future_60_return_pct": 13.885701362772117,
+        "future_126_return_pct": 32.88493914849775
+      },
+      {
+        "exit_date": "2022-11-14T00:00:00",
+        "trade_return_pct": 2.909112997110624,
+        "future_max_return_pct": 15.869138335162258,
+        "future_min_return_pct": -8.942361556977218,
+        "future_60_return_pct": 4.918183748276572,
+        "future_126_return_pct": 15.869138335162258
+      }
+    ]
+  },
+  "challenger_primary": {
+    "metrics": {
+      "total_return": 87.53327491246371,
+      "cagr": 0.20018726691563704,
+      "annual_volatility": 0.18193378887420486,
+      "sharpe": 1.0962854467501846,
+      "sortino": 0.9301335373532023,
+      "calmar": 0.6219940390940836,
+      "max_drawdown": -0.3218475649818189,
+      "ulcer_index": 0.05807521815328558,
+      "time_underwater": 0.8517559475643308,
+      "var_95_daily": -0.01777466196985243,
+      "cvar_95_daily": -0.02740531710062323,
+      "skewness": 0.3086783377208993,
+      "excess_kurtosis": 9.901551478987264,
+      "jarque_bera_stat": 25289.606913428863,
+      "jarque_bera_p": 0.0,
+      "autocorrelation_lags_1_10": [
+        -0.09269557280308666,
+        0.008688800749567243,
+        -0.030362259922635935,
+        -0.006307568305986854,
+        -0.011619086553190027,
+        -0.03602915861204242,
+        0.007725915600051565,
+        -0.02217254515703996,
+        0.03230393117238509,
+        0.019725383543732593
+      ],
+      "effective_daily_observations": 5434.132176933315,
+      "mean_return_t_stat": 5.090828624194121,
+      "psr_vs_zero": 0.9999998377201101,
+      "positive_months": 0.5306122448979592,
+      "rolling_sharpe_252_min": -1.2106701122948609,
+      "rolling_sharpe_252_max": 3.1198159847695157,
+      "rolling_sharpe_252_std": 0.7478088829641443,
+      "completed_trades": 17,
+      "win_rate": 0.9411764705882353,
+      "profit_factor": 50.21102079773837,
+      "expectancy": 0.31286969613214977,
+      "average_win": 0.3391791254299209,
+      "average_loss": -0.10808117263218783,
+      "payoff_ratio": 3.138188799858648,
+      "exposure": 0.7308625991260722,
+      "round_trips_per_year": 0.6919155337642077
+    },
+    "early_period": {
+      "start": "2002-01-02T00:00:00",
+      "end": "2013-12-31T00:00:00",
+      "observations": 3017,
+      "cagr": 0.17541907509173038,
+      "sharpe": 0.960116081731377,
+      "max_drawdown": -0.3218475649818189,
+      "annual_volatility": 0.186845900564084
+    },
+    "late_period": {
+      "start": "2014-01-02T00:00:00",
+      "end": "2026-07-29T00:00:00",
+      "observations": 3160,
+      "cagr": 0.22518064272723914,
+      "sharpe": 1.23790683589238,
+      "max_drawdown": -0.2252864621295675,
+      "annual_volatility": 0.17715032988417406
+    },
+    "real_breadth_period": {
+      "start": "2007-01-03T00:00:00",
+      "end": "2026-07-29T00:00:00",
+      "observations": 4922,
+      "cagr": 0.2238887705173911,
+      "sharpe": 1.1668740946973228,
+      "max_drawdown": -0.3218475649818189,
+      "annual_volatility": 0.18877285743423117
+    },
+    "clean_forward_slice": {
+      "start": "2026-07-06T00:00:00",
+      "end": "2026-07-29T00:00:00",
+      "observations": 17,
+      "cagr": -0.7675006932617524,
+      "sharpe": -6.469528662145761,
+      "max_drawdown": -0.0882746115605273,
+      "annual_volatility": 0.2068157830900843
+    },
+    "exit_reason_counts": {
+      "climax-top": 7,
+      "bearish-divergence": 9,
+      "trailing-stop": 1
+    },
+    "climax_exit_future_paths": [
+      {
+        "exit_date": "2002-08-15T00:00:00",
+        "trade_return_pct": 11.266436389334928,
+        "future_max_return_pct": 15.5852280302331,
+        "future_min_return_pct": -17.48043770318638,
+        "future_60_return_pct": 3.420197110010359,
+        "future_126_return_pct": 0.7178824518762283
+      },
+      {
+        "exit_date": "2002-11-12T00:00:00",
+        "trade_return_pct": 21.249727099487348,
+        "future_max_return_pct": 18.37040052928902,
+        "future_min_return_pct": -3.109573006259869,
+        "future_60_return_pct": -1.2713115171255507,
+        "future_126_return_pct": 18.37040052928902
+      },
+      {
+        "exit_date": "2003-03-18T00:00:00",
+        "trade_return_pct": 1.3553900874935836,
+        "future_max_return_pct": 28.962150097647175,
+        "future_min_return_pct": -5.267367246349853,
+        "future_60_return_pct": 14.323444620106018,
+        "future_126_return_pct": 28.59853064261135
+      },
+      {
+        "exit_date": "2008-11-05T00:00:00",
+        "trade_return_pct": 5.178220440872035,
+        "future_max_return_pct": 5.01095733258814,
+        "future_min_return_pct": -23.775940933358818,
+        "future_60_return_pct": -10.601403126884435,
+        "future_126_return_pct": 2.5253342354135233
+      },
+      {
+        "exit_date": "2009-01-14T00:00:00",
+        "trade_return_pct": 6.924540387985798,
+        "future_max_return_pct": 28.30569611164142,
+        "future_min_return_pct": -11.819663960668702,
+        "future_60_return_pct": 12.914452732325854,
+        "future_126_return_pct": 28.30569611164142
+      },
+      {
+        "exit_date": "2009-02-18T00:00:00",
+        "trade_return_pct": 2.1030798495609764,
+        "future_max_return_pct": 36.415415155500085,
+        "future_min_return_pct": -12.56564675137577,
+        "future_60_return_pct": 13.885701362772117,
+        "future_126_return_pct": 32.88493914849775
+      },
+      {
+        "exit_date": "2022-11-14T00:00:00",
+        "trade_return_pct": 2.909112997110624,
+        "future_max_return_pct": 15.869138335162258,
+        "future_min_return_pct": -8.942361556977218,
+        "future_60_return_pct": 4.918183748276572,
+        "future_126_return_pct": 15.869138335162258
+      }
+    ],
+    "paired_inference": {
+      "annualized_mean_difference": 0.0,
+      "newey_west_lags": 21,
+      "hac_t_stat": null,
+      "hac_two_sided_p": null,
+      "block_size": 21,
+      "bootstrap_simulations": 2000,
+      "bootstrap_95_interval_annualized": [
+        0.0,
+        0.0
+      ]
+    }
+  },
+  "parameter_sensitivity": {
+    "2pct": {
+      "metrics": {
+        "total_return": 87.53327491246371,
+        "cagr": 0.20018726691563704,
+        "annual_volatility": 0.18193378887420486,
+        "sharpe": 1.0962854467501846,
+        "sortino": 0.9301335373532023,
+        "calmar": 0.6219940390940836,
+        "max_drawdown": -0.3218475649818189,
+        "ulcer_index": 0.05807521815328558,
+        "time_underwater": 0.8517559475643308,
+        "var_95_daily": -0.01777466196985243,
+        "cvar_95_daily": -0.02740531710062323,
+        "skewness": 0.3086783377208993,
+        "excess_kurtosis": 9.901551478987264,
+        "jarque_bera_stat": 25289.606913428863,
+        "jarque_bera_p": 0.0,
+        "autocorrelation_lags_1_10": [
+          -0.09269557280308666,
+          0.008688800749567243,
+          -0.030362259922635935,
+          -0.006307568305986854,
+          -0.011619086553190027,
+          -0.03602915861204242,
+          0.007725915600051565,
+          -0.02217254515703996,
+          0.03230393117238509,
+          0.019725383543732593
+        ],
+        "effective_daily_observations": 5434.132176933315,
+        "mean_return_t_stat": 5.090828624194121,
+        "psr_vs_zero": 0.9999998377201101,
+        "positive_months": 0.5306122448979592,
+        "rolling_sharpe_252_min": -1.2106701122948609,
+        "rolling_sharpe_252_max": 3.1198159847695157,
+        "rolling_sharpe_252_std": 0.7478088829641443,
+        "completed_trades": 17,
+        "win_rate": 0.9411764705882353,
+        "profit_factor": 50.21102079773837,
+        "expectancy": 0.31286969613214977,
+        "average_win": 0.3391791254299209,
+        "average_loss": -0.10808117263218783,
+        "payoff_ratio": 3.138188799858648,
+        "exposure": 0.7308625991260722,
+        "round_trips_per_year": 0.6919155337642077
+      },
+      "early_period": {
+        "start": "2002-01-02T00:00:00",
+        "end": "2013-12-31T00:00:00",
+        "observations": 3017,
+        "cagr": 0.17541907509173038,
+        "sharpe": 0.960116081731377,
+        "max_drawdown": -0.3218475649818189,
+        "annual_volatility": 0.186845900564084
+      },
+      "late_period": {
+        "start": "2014-01-02T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 3160,
+        "cagr": 0.22518064272723914,
+        "sharpe": 1.23790683589238,
+        "max_drawdown": -0.2252864621295675,
+        "annual_volatility": 0.17715032988417406
+      },
+      "real_breadth_period": {
+        "start": "2007-01-03T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 4922,
+        "cagr": 0.2238887705173911,
+        "sharpe": 1.1668740946973228,
+        "max_drawdown": -0.3218475649818189,
+        "annual_volatility": 0.18877285743423117
+      },
+      "clean_forward_slice": {
+        "start": "2026-07-06T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 17,
+        "cagr": -0.7675006932617524,
+        "sharpe": -6.469528662145761,
+        "max_drawdown": -0.0882746115605273,
+        "annual_volatility": 0.2068157830900843
+      },
+      "exit_reason_counts": {
+        "climax-top": 7,
+        "bearish-divergence": 9,
+        "trailing-stop": 1
+      },
+      "climax_exit_future_paths": [
+        {
+          "exit_date": "2002-08-15T00:00:00",
+          "trade_return_pct": 11.266436389334928,
+          "future_max_return_pct": 15.5852280302331,
+          "future_min_return_pct": -17.48043770318638,
+          "future_60_return_pct": 3.420197110010359,
+          "future_126_return_pct": 0.7178824518762283
+        },
+        {
+          "exit_date": "2002-11-12T00:00:00",
+          "trade_return_pct": 21.249727099487348,
+          "future_max_return_pct": 18.37040052928902,
+          "future_min_return_pct": -3.109573006259869,
+          "future_60_return_pct": -1.2713115171255507,
+          "future_126_return_pct": 18.37040052928902
+        },
+        {
+          "exit_date": "2003-03-18T00:00:00",
+          "trade_return_pct": 1.3553900874935836,
+          "future_max_return_pct": 28.962150097647175,
+          "future_min_return_pct": -5.267367246349853,
+          "future_60_return_pct": 14.323444620106018,
+          "future_126_return_pct": 28.59853064261135
+        },
+        {
+          "exit_date": "2008-11-05T00:00:00",
+          "trade_return_pct": 5.178220440872035,
+          "future_max_return_pct": 5.01095733258814,
+          "future_min_return_pct": -23.775940933358818,
+          "future_60_return_pct": -10.601403126884435,
+          "future_126_return_pct": 2.5253342354135233
+        },
+        {
+          "exit_date": "2009-01-14T00:00:00",
+          "trade_return_pct": 6.924540387985798,
+          "future_max_return_pct": 28.30569611164142,
+          "future_min_return_pct": -11.819663960668702,
+          "future_60_return_pct": 12.914452732325854,
+          "future_126_return_pct": 28.30569611164142
+        },
+        {
+          "exit_date": "2009-02-18T00:00:00",
+          "trade_return_pct": 2.1030798495609764,
+          "future_max_return_pct": 36.415415155500085,
+          "future_min_return_pct": -12.56564675137577,
+          "future_60_return_pct": 13.885701362772117,
+          "future_126_return_pct": 32.88493914849775
+        },
+        {
+          "exit_date": "2022-11-14T00:00:00",
+          "trade_return_pct": 2.909112997110624,
+          "future_max_return_pct": 15.869138335162258,
+          "future_min_return_pct": -8.942361556977218,
+          "future_60_return_pct": 4.918183748276572,
+          "future_126_return_pct": 15.869138335162258
+        }
+      ]
+    },
+    "3pct": {
+      "metrics": {
+        "total_return": 87.53327491246371,
+        "cagr": 0.20018726691563704,
+        "annual_volatility": 0.18193378887420486,
+        "sharpe": 1.0962854467501846,
+        "sortino": 0.9301335373532023,
+        "calmar": 0.6219940390940836,
+        "max_drawdown": -0.3218475649818189,
+        "ulcer_index": 0.05807521815328558,
+        "time_underwater": 0.8517559475643308,
+        "var_95_daily": -0.01777466196985243,
+        "cvar_95_daily": -0.02740531710062323,
+        "skewness": 0.3086783377208993,
+        "excess_kurtosis": 9.901551478987264,
+        "jarque_bera_stat": 25289.606913428863,
+        "jarque_bera_p": 0.0,
+        "autocorrelation_lags_1_10": [
+          -0.09269557280308666,
+          0.008688800749567243,
+          -0.030362259922635935,
+          -0.006307568305986854,
+          -0.011619086553190027,
+          -0.03602915861204242,
+          0.007725915600051565,
+          -0.02217254515703996,
+          0.03230393117238509,
+          0.019725383543732593
+        ],
+        "effective_daily_observations": 5434.132176933315,
+        "mean_return_t_stat": 5.090828624194121,
+        "psr_vs_zero": 0.9999998377201101,
+        "positive_months": 0.5306122448979592,
+        "rolling_sharpe_252_min": -1.2106701122948609,
+        "rolling_sharpe_252_max": 3.1198159847695157,
+        "rolling_sharpe_252_std": 0.7478088829641443,
+        "completed_trades": 17,
+        "win_rate": 0.9411764705882353,
+        "profit_factor": 50.21102079773837,
+        "expectancy": 0.31286969613214977,
+        "average_win": 0.3391791254299209,
+        "average_loss": -0.10808117263218783,
+        "payoff_ratio": 3.138188799858648,
+        "exposure": 0.7308625991260722,
+        "round_trips_per_year": 0.6919155337642077
+      },
+      "early_period": {
+        "start": "2002-01-02T00:00:00",
+        "end": "2013-12-31T00:00:00",
+        "observations": 3017,
+        "cagr": 0.17541907509173038,
+        "sharpe": 0.960116081731377,
+        "max_drawdown": -0.3218475649818189,
+        "annual_volatility": 0.186845900564084
+      },
+      "late_period": {
+        "start": "2014-01-02T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 3160,
+        "cagr": 0.22518064272723914,
+        "sharpe": 1.23790683589238,
+        "max_drawdown": -0.2252864621295675,
+        "annual_volatility": 0.17715032988417406
+      },
+      "real_breadth_period": {
+        "start": "2007-01-03T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 4922,
+        "cagr": 0.2238887705173911,
+        "sharpe": 1.1668740946973228,
+        "max_drawdown": -0.3218475649818189,
+        "annual_volatility": 0.18877285743423117
+      },
+      "clean_forward_slice": {
+        "start": "2026-07-06T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 17,
+        "cagr": -0.7675006932617524,
+        "sharpe": -6.469528662145761,
+        "max_drawdown": -0.0882746115605273,
+        "annual_volatility": 0.2068157830900843
+      },
+      "exit_reason_counts": {
+        "climax-top": 7,
+        "bearish-divergence": 9,
+        "trailing-stop": 1
+      },
+      "climax_exit_future_paths": [
+        {
+          "exit_date": "2002-08-15T00:00:00",
+          "trade_return_pct": 11.266436389334928,
+          "future_max_return_pct": 15.5852280302331,
+          "future_min_return_pct": -17.48043770318638,
+          "future_60_return_pct": 3.420197110010359,
+          "future_126_return_pct": 0.7178824518762283
+        },
+        {
+          "exit_date": "2002-11-12T00:00:00",
+          "trade_return_pct": 21.249727099487348,
+          "future_max_return_pct": 18.37040052928902,
+          "future_min_return_pct": -3.109573006259869,
+          "future_60_return_pct": -1.2713115171255507,
+          "future_126_return_pct": 18.37040052928902
+        },
+        {
+          "exit_date": "2003-03-18T00:00:00",
+          "trade_return_pct": 1.3553900874935836,
+          "future_max_return_pct": 28.962150097647175,
+          "future_min_return_pct": -5.267367246349853,
+          "future_60_return_pct": 14.323444620106018,
+          "future_126_return_pct": 28.59853064261135
+        },
+        {
+          "exit_date": "2008-11-05T00:00:00",
+          "trade_return_pct": 5.178220440872035,
+          "future_max_return_pct": 5.01095733258814,
+          "future_min_return_pct": -23.775940933358818,
+          "future_60_return_pct": -10.601403126884435,
+          "future_126_return_pct": 2.5253342354135233
+        },
+        {
+          "exit_date": "2009-01-14T00:00:00",
+          "trade_return_pct": 6.924540387985798,
+          "future_max_return_pct": 28.30569611164142,
+          "future_min_return_pct": -11.819663960668702,
+          "future_60_return_pct": 12.914452732325854,
+          "future_126_return_pct": 28.30569611164142
+        },
+        {
+          "exit_date": "2009-02-18T00:00:00",
+          "trade_return_pct": 2.1030798495609764,
+          "future_max_return_pct": 36.415415155500085,
+          "future_min_return_pct": -12.56564675137577,
+          "future_60_return_pct": 13.885701362772117,
+          "future_126_return_pct": 32.88493914849775
+        },
+        {
+          "exit_date": "2022-11-14T00:00:00",
+          "trade_return_pct": 2.909112997110624,
+          "future_max_return_pct": 15.869138335162258,
+          "future_min_return_pct": -8.942361556977218,
+          "future_60_return_pct": 4.918183748276572,
+          "future_126_return_pct": 15.869138335162258
+        }
+      ],
+      "paired_inference": {
+        "annualized_mean_difference": 0.0,
+        "newey_west_lags": 21,
+        "hac_t_stat": null,
+        "hac_two_sided_p": null,
+        "block_size": 21,
+        "bootstrap_simulations": 2000,
+        "bootstrap_95_interval_annualized": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "4pct": {
+      "metrics": {
+        "total_return": 87.53327491246371,
+        "cagr": 0.20018726691563704,
+        "annual_volatility": 0.18193378887420486,
+        "sharpe": 1.0962854467501846,
+        "sortino": 0.9301335373532023,
+        "calmar": 0.6219940390940836,
+        "max_drawdown": -0.3218475649818189,
+        "ulcer_index": 0.05807521815328558,
+        "time_underwater": 0.8517559475643308,
+        "var_95_daily": -0.01777466196985243,
+        "cvar_95_daily": -0.02740531710062323,
+        "skewness": 0.3086783377208993,
+        "excess_kurtosis": 9.901551478987264,
+        "jarque_bera_stat": 25289.606913428863,
+        "jarque_bera_p": 0.0,
+        "autocorrelation_lags_1_10": [
+          -0.09269557280308666,
+          0.008688800749567243,
+          -0.030362259922635935,
+          -0.006307568305986854,
+          -0.011619086553190027,
+          -0.03602915861204242,
+          0.007725915600051565,
+          -0.02217254515703996,
+          0.03230393117238509,
+          0.019725383543732593
+        ],
+        "effective_daily_observations": 5434.132176933315,
+        "mean_return_t_stat": 5.090828624194121,
+        "psr_vs_zero": 0.9999998377201101,
+        "positive_months": 0.5306122448979592,
+        "rolling_sharpe_252_min": -1.2106701122948609,
+        "rolling_sharpe_252_max": 3.1198159847695157,
+        "rolling_sharpe_252_std": 0.7478088829641443,
+        "completed_trades": 17,
+        "win_rate": 0.9411764705882353,
+        "profit_factor": 50.21102079773837,
+        "expectancy": 0.31286969613214977,
+        "average_win": 0.3391791254299209,
+        "average_loss": -0.10808117263218783,
+        "payoff_ratio": 3.138188799858648,
+        "exposure": 0.7308625991260722,
+        "round_trips_per_year": 0.6919155337642077
+      },
+      "early_period": {
+        "start": "2002-01-02T00:00:00",
+        "end": "2013-12-31T00:00:00",
+        "observations": 3017,
+        "cagr": 0.17541907509173038,
+        "sharpe": 0.960116081731377,
+        "max_drawdown": -0.3218475649818189,
+        "annual_volatility": 0.186845900564084
+      },
+      "late_period": {
+        "start": "2014-01-02T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 3160,
+        "cagr": 0.22518064272723914,
+        "sharpe": 1.23790683589238,
+        "max_drawdown": -0.2252864621295675,
+        "annual_volatility": 0.17715032988417406
+      },
+      "real_breadth_period": {
+        "start": "2007-01-03T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 4922,
+        "cagr": 0.2238887705173911,
+        "sharpe": 1.1668740946973228,
+        "max_drawdown": -0.3218475649818189,
+        "annual_volatility": 0.18877285743423117
+      },
+      "clean_forward_slice": {
+        "start": "2026-07-06T00:00:00",
+        "end": "2026-07-29T00:00:00",
+        "observations": 17,
+        "cagr": -0.7675006932617524,
+        "sharpe": -6.469528662145761,
+        "max_drawdown": -0.0882746115605273,
+        "annual_volatility": 0.2068157830900843
+      },
+      "exit_reason_counts": {
+        "climax-top": 7,
+        "bearish-divergence": 9,
+        "trailing-stop": 1
+      },
+      "climax_exit_future_paths": [
+        {
+          "exit_date": "2002-08-15T00:00:00",
+          "trade_return_pct": 11.266436389334928,
+          "future_max_return_pct": 15.5852280302331,
+          "future_min_return_pct": -17.48043770318638,
+          "future_60_return_pct": 3.420197110010359,
+          "future_126_return_pct": 0.7178824518762283
+        },
+        {
+          "exit_date": "2002-11-12T00:00:00",
+          "trade_return_pct": 21.249727099487348,
+          "future_max_return_pct": 18.37040052928902,
+          "future_min_return_pct": -3.109573006259869,
+          "future_60_return_pct": -1.2713115171255507,
+          "future_126_return_pct": 18.37040052928902
+        },
+        {
+          "exit_date": "2003-03-18T00:00:00",
+          "trade_return_pct": 1.3553900874935836,
+          "future_max_return_pct": 28.962150097647175,
+          "future_min_return_pct": -5.267367246349853,
+          "future_60_return_pct": 14.323444620106018,
+          "future_126_return_pct": 28.59853064261135
+        },
+        {
+          "exit_date": "2008-11-05T00:00:00",
+          "trade_return_pct": 5.178220440872035,
+          "future_max_return_pct": 5.01095733258814,
+          "future_min_return_pct": -23.775940933358818,
+          "future_60_return_pct": -10.601403126884435,
+          "future_126_return_pct": 2.5253342354135233
+        },
+        {
+          "exit_date": "2009-01-14T00:00:00",
+          "trade_return_pct": 6.924540387985798,
+          "future_max_return_pct": 28.30569611164142,
+          "future_min_return_pct": -11.819663960668702,
+          "future_60_return_pct": 12.914452732325854,
+          "future_126_return_pct": 28.30569611164142
+        },
+        {
+          "exit_date": "2009-02-18T00:00:00",
+          "trade_return_pct": 2.1030798495609764,
+          "future_max_return_pct": 36.415415155500085,
+          "future_min_return_pct": -12.56564675137577,
+          "future_60_return_pct": 13.885701362772117,
+          "future_126_return_pct": 32.88493914849775
+        },
+        {
+          "exit_date": "2022-11-14T00:00:00",
+          "trade_return_pct": 2.909112997110624,
+          "future_max_return_pct": 15.869138335162258,
+          "future_min_return_pct": -8.942361556977218,
+          "future_60_return_pct": 4.918183748276572,
+          "future_126_return_pct": 15.869138335162258
+        }
+      ]
+    }
+  },
+  "cost_stress": {
+    "1": {
+      "baseline_cagr": 0.20018726691563704,
+      "challenger_cagr": 0.20018726691563704
+    },
+    "2": {
+      "baseline_cagr": 0.19924037350321733,
+      "challenger_cagr": 0.19924037350321733
+    },
+    "5": {
+      "baseline_cagr": 0.1963995797571254,
+      "challenger_cagr": 0.1963995797571254
+    },
+    "10": {
+      "baseline_cagr": 0.19166394759426209,
+      "challenger_cagr": 0.19166394759426209
+    }
+  },
+  "current": {
+    "date": "2026-07-29T00:00:00",
+    "pullback_from_10_close_high_pct": -6.73249144748892,
+    "raw_macd_cross": false,
+    "confirmed_macd_cross_3pct": false
+  },
+  "bias_audit": {
+    "lookahead": "Absent: all confirmation inputs end at the signal close and fills occur at the next session open.",
+    "survivorship": "Cannot verify aggregate breadth constituent history; index and breadth series are used.",
+    "data_snooping": "Material risk due to extensive prior repository trials; this three-value sensitivity set is additionally counted.",
+    "transaction_costs": "Included and stressed at 1x/2x/5x/10x.",
+    "liquidity": "Low concern for QQQ at modeled size, but explicit ADV participation is not modeled.",
+    "frequency_alignment": "Daily close confirmation and next-session-open fills align.",
+    "synthetic_breadth": "Present before 2007; 2007+ results reported separately.",
+    "clean_forward_oos": "Insufficient: only 18 bars after the freeze and no completed trade in that slice."
+  },
+  "artifacts": {
+    "results_json": "/Users/wongkaho/Downloads/spy500_history/qqq_climax_confirmation_results.json",
+    "equity_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_climax_confirmation_equity.csv",
+    "trades_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_climax_confirmation_trades.csv",
+    "signals_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_climax_confirmation_signals.csv"
+  }
+}

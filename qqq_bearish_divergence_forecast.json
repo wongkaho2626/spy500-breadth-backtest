@@ -1,0 +1,338 @@
+{
+  "method": {
+    "model": "robust-scaled nearest historical states",
+    "features": [
+      "spy_daily_change_pct",
+      "ndx_return_60_pct",
+      "breadth",
+      "breadth_fall_60_points",
+      "drawdown_from_trade_high_pct",
+      "vix"
+    ],
+    "one_analogue_per_completed_trade": true,
+    "competing_risks": [
+      "climax-top",
+      "trailing-stop"
+    ],
+    "default_neighbors": 7,
+    "sensitivity_neighbors": [
+      5,
+      7,
+      9
+    ],
+    "forecast_horizons_sessions": [
+      20,
+      60,
+      126,
+      252
+    ],
+    "uncertainty": "Jeffreys beta posterior using inverse-distance effective neighbor count"
+  },
+  "data": {
+    "start": "2002-01-02T00:00:00",
+    "end": "2026-07-29T00:00:00",
+    "bars": 6179,
+    "completed_trades": 17,
+    "historical_vector_rows": 4187,
+    "trade_level_analogues": 17,
+    "spy_daily_change_source": "SPX.csv close-to-close return (local SPY proxy)",
+    "pre_2007_breadth": "synthetic MMTH-mapped splice"
+  },
+  "current_vector": {
+    "spy_daily_change_pct": -1.5161305086434096,
+    "ndx_return_60_pct": -1.8695173934947018,
+    "breadth": 69.14,
+    "breadth_fall_60_points": -12.29,
+    "drawdown_from_trade_high_pct": -11.311879089124144,
+    "vix": 18.43
+  },
+  "threshold_distances": {
+    "price_condition_met": false,
+    "breadth_fall_condition_met": false,
+    "breadth_cap_condition_met": false,
+    "ndx_level_needed_if_anchor_static": 28541.6708,
+    "ndx_rise_from_current_needed_pct": 4.96228823516649,
+    "breadth_needed_if_anchor_static": 36.85,
+    "breadth_drop_from_current_needed_points": 32.29,
+    "warning": "Both 60-session anchors roll daily; these threshold distances are a current snapshot, not fixed future targets."
+  },
+  "forecast": {
+    "neighbors_requested": 7,
+    "neighbors_used": 7,
+    "effective_neighbor_count": 6.788838566784727,
+    "raw_weighted_divergence_rate": 1.0,
+    "probability_divergence_before_other_exit": 0.9358055766963466,
+    "jeffreys_90_interval": [
+      0.7614843823113966,
+      0.9997208973692626
+    ],
+    "probability_by_horizon_sessions": {
+      "20": {
+        "raw_weighted_rate": 0.0,
+        "posterior_probability": 0.06419442330365342,
+        "jeffreys_90_interval": [
+          0.00027910263073733615,
+          0.23851561768860322
+        ]
+      },
+      "60": {
+        "raw_weighted_rate": 0.0,
+        "posterior_probability": 0.06419442330365342,
+        "jeffreys_90_interval": [
+          0.00027910263073733615,
+          0.23851561768860322
+        ]
+      },
+      "126": {
+        "raw_weighted_rate": 0.19669360938367797,
+        "posterior_probability": 0.23563476704353284,
+        "jeffreys_90_interval": [
+          0.04482595788770131,
+          0.5067288928982816
+        ]
+      },
+      "252": {
+        "raw_weighted_rate": 0.6131677923856789,
+        "posterior_probability": 0.5986383100481864,
+        "jeffreys_90_interval": [
+          0.3115656061354628,
+          0.8552524325608362
+        ]
+      }
+    },
+    "raw_neighbor_reason_weights": {
+      "bearish-divergence": 1.0,
+      "climax-top": 0.0,
+      "trailing-stop": 0.0
+    },
+    "conditional_timing_if_divergence": {
+      "sessions_q25_median_q75": [
+        178.0,
+        222.0,
+        448.0
+      ],
+      "approximate_dates_q25_median_q75": [
+        "2027-04-13T00:00:00",
+        "2027-06-16T00:00:00",
+        "2028-05-08T00:00:00"
+      ]
+    },
+    "neighbors": [
+      {
+        "date": "2024-09-06T00:00:00",
+        "trade_id": 17,
+        "distance": 0.7572544774254933,
+        "weight": 0.19669360938367797,
+        "outcome_reason": "bearish-divergence",
+        "sessions_to_outcome": 72.0,
+        "outcome_signal_date": "2024-12-18T00:00:00",
+        "features": {
+          "spy_daily_change_pct": -1.726020776209658,
+          "ndx_return_60_pct": -4.106570523248321,
+          "breadth": 66.99,
+          "breadth_fall_60_points": -0.39000000000000057,
+          "drawdown_from_trade_high_pct": -10.902193816993933,
+          "vix": 22.38
+        }
+      },
+      {
+        "date": "2006-09-06T00:00:00",
+        "trade_id": 5,
+        "distance": 0.9872056034256798,
+        "weight": 0.16013548450162027,
+        "outcome_reason": "bearish-divergence",
+        "sessions_to_outcome": 222.0,
+        "outcome_signal_date": "2007-07-26T00:00:00",
+        "features": {
+          "spy_daily_change_pct": -0.982333231800192,
+          "ndx_return_60_pct": 3.4131196926942664,
+          "breadth": 61.63,
+          "breadth_fall_60_points": -15.420000000000002,
+          "drawdown_from_trade_high_pct": -10.58103558103558,
+          "vix": 13.74
+        }
+      },
+      {
+        "date": "2012-10-23T00:00:00",
+        "trade_id": 11,
+        "distance": 1.1898264022973108,
+        "weight": 0.13760028182326708,
+        "outcome_reason": "bearish-divergence",
+        "sessions_to_outcome": 448.0,
+        "outcome_signal_date": "2014-08-07T00:00:00",
+        "features": {
+          "spy_daily_change_pct": -1.4437159994420412,
+          "ndx_return_60_pct": 0.9045766278594547,
+          "breadth": 61.0,
+          "breadth_fall_60_points": 0.8900000000000006,
+          "drawdown_from_trade_high_pct": -6.9136845633600235,
+          "vix": 18.83
+        }
+      },
+      {
+        "date": "2019-05-31T00:00:00",
+        "trade_id": 13,
+        "distance": 1.252680525006678,
+        "weight": 0.13184473707863503,
+        "outcome_reason": "bearish-divergence",
+        "sessions_to_outcome": 185.0,
+        "outcome_signal_date": "2020-02-25T00:00:00",
+        "features": {
+          "spy_daily_change_pct": -1.3195166553121362,
+          "ndx_return_60_pct": 0.21778650735959637,
+          "breadth": 48.31,
+          "breadth_fall_60_points": 6.140000000000001,
+          "drawdown_from_trade_high_pct": -9.148543220324934,
+          "vix": 18.71
+        }
+      },
+      {
+        "date": "2016-05-17T00:00:00",
+        "trade_id": 12,
+        "distance": 1.2565465339578221,
+        "weight": 0.13150640505754027,
+        "outcome_reason": "bearish-divergence",
+        "sessions_to_outcome": 465.0,
+        "outcome_signal_date": "2018-03-22T00:00:00",
+        "features": {
+          "spy_daily_change_pct": -0.9435331688198434,
+          "ndx_return_60_pct": 2.1575082658398026,
+          "breadth": 61.67,
+          "breadth_fall_60_points": -28.14,
+          "drawdown_from_trade_high_pct": -8.401902925376925,
+          "vix": 15.57
+        }
+      },
+      {
+        "date": "2021-03-18T00:00:00",
+        "trade_id": 14,
+        "distance": 1.341406655151103,
+        "weight": 0.12449396142174564,
+        "outcome_reason": "bearish-divergence",
+        "sessions_to_outcome": 178.0,
+        "outcome_signal_date": "2021-11-30T00:00:00",
+        "features": {
+          "spy_daily_change_pct": -1.4745476963337611,
+          "ndx_return_60_pct": 0.40005715102156003,
+          "breadth": 86.13,
+          "breadth_fall_60_points": 3.7700000000000102,
+          "drawdown_from_trade_high_pct": -7.376753550555137,
+          "vix": 21.58
+        }
+      },
+      {
+        "date": "2010-09-07T00:00:00",
+        "trade_id": 10,
+        "distance": 1.4329020377082127,
+        "weight": 0.11772552073351372,
+        "outcome_reason": "bearish-divergence",
+        "sessions_to_outcome": 260.0,
+        "outcome_signal_date": "2011-09-16T00:00:00",
+        "features": {
+          "spy_daily_change_pct": -1.1498415572657406,
+          "ndx_return_60_pct": 0.5061852042335335,
+          "breadth": 48.0,
+          "breadth_fall_60_points": 7.399999999999999,
+          "drawdown_from_trade_high_pct": -9.673872322206167,
+          "vix": 23.8
+        }
+      }
+    ]
+  },
+  "neighbor_sensitivity": {
+    "5": 0.9148027963751388,
+    "7": 0.9358055766963466,
+    "9": 0.8679431066421722
+  },
+  "leave_one_trade_out_validation": {
+    "landmark_session": 60,
+    "trades_tested": 10,
+    "brier_score": 0.15522323092787635,
+    "classification_accuracy_at_50pct": 0.8,
+    "observed_divergence_rate": 0.8,
+    "mean_predicted_probability": 0.753932868690846,
+    "predictions": [
+      {
+        "trade_id": 5,
+        "landmark_date": "2005-06-24T00:00:00",
+        "predicted_probability": 0.9335790454547609,
+        "observed_divergence": 1.0,
+        "outcome_reason": "bearish-divergence"
+      },
+      {
+        "trade_id": 6,
+        "landmark_date": "2008-04-18T00:00:00",
+        "predicted_probability": 0.7423409705983353,
+        "observed_divergence": 0.0,
+        "outcome_reason": "trailing-stop"
+      },
+      {
+        "trade_id": 10,
+        "landmark_date": "2009-06-03T00:00:00",
+        "predicted_probability": 0.7228517760730296,
+        "observed_divergence": 1.0,
+        "outcome_reason": "bearish-divergence"
+      },
+      {
+        "trade_id": 11,
+        "landmark_date": "2012-01-03T00:00:00",
+        "predicted_probability": 0.5743994590214089,
+        "observed_divergence": 1.0,
+        "outcome_reason": "bearish-divergence"
+      },
+      {
+        "trade_id": 12,
+        "landmark_date": "2015-11-18T00:00:00",
+        "predicted_probability": 0.7576650488433331,
+        "observed_divergence": 1.0,
+        "outcome_reason": "bearish-divergence"
+      },
+      {
+        "trade_id": 13,
+        "landmark_date": "2019-01-11T00:00:00",
+        "predicted_probability": 0.6606917638606439,
+        "observed_divergence": 1.0,
+        "outcome_reason": "bearish-divergence"
+      },
+      {
+        "trade_id": 14,
+        "landmark_date": "2020-06-10T00:00:00",
+        "predicted_probability": 0.7065179186884941,
+        "observed_divergence": 1.0,
+        "outcome_reason": "bearish-divergence"
+      },
+      {
+        "trade_id": 15,
+        "landmark_date": "2022-09-09T00:00:00",
+        "predicted_probability": 0.6692382761997224,
+        "observed_divergence": 0.0,
+        "outcome_reason": "climax-top"
+      },
+      {
+        "trade_id": 16,
+        "landmark_date": "2023-04-25T00:00:00",
+        "predicted_probability": 0.9357902235370535,
+        "observed_divergence": 1.0,
+        "outcome_reason": "bearish-divergence"
+      },
+      {
+        "trade_id": 17,
+        "landmark_date": "2024-01-26T00:00:00",
+        "predicted_probability": 0.8362542046316771,
+        "observed_divergence": 1.0,
+        "outcome_reason": "bearish-divergence"
+      }
+    ]
+  },
+  "limitations": [
+    "Only one nearest state per 17 completed trades is counted.",
+    "Nine completed trades ended in bearish divergence.",
+    "The timing interval is conditional on divergence occurring before a competing exit; it is not an unconditional calendar promise.",
+    "All observations through the latest local close have already been seen and are not clean forward out-of-sample evidence.",
+    "The current feature vector changes every session as both 60-day anchors roll."
+  ],
+  "artifacts": {
+    "vector_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_bearish_divergence_vector.csv",
+    "forecast_json": "/Users/wongkaho/Downloads/spy500_history/qqq_bearish_divergence_forecast.json"
+  }
+}

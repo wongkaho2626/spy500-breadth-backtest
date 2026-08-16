@@ -1,0 +1,129 @@
+{
+  "hypothesis": "Adding the frozen bearish-divergence vote fraction to the six-dimensional trajectory vector improves causal ranking of a 126-session SPX drop of at least 20%.",
+  "method": {
+    "baseline_features": [
+      "ndx_return_60_pct",
+      "ndx_return_60_slope_20",
+      "vix",
+      "vix_slope_20",
+      "spx_drawdown_252_pct",
+      "spx_drawdown_252_slope_20"
+    ],
+    "challenger_features": [
+      "ndx_return_60_pct",
+      "ndx_return_60_slope_20",
+      "vix",
+      "vix_slope_20",
+      "spx_drawdown_252_pct",
+      "spx_drawdown_252_slope_20",
+      "canonical_sell_vote_fraction"
+    ],
+    "sell_vote_definition": "fraction of frozen divergence conditions met: NDX 60d return >=3%, breadth 60d fall >=20 points, breadth <60%",
+    "target": "SPX future minimum return over 126 sessions <= -20%",
+    "scaling": "expanding historical median/IQR",
+    "distance": "Euclidean after robust scaling",
+    "causal_reference": "only peak episodes whose -20% breach predates the query",
+    "new_thresholds": 0
+  },
+  "data": {
+    "start": "2002-01-02T00:00:00",
+    "end": "2026-07-30T00:00:00",
+    "bars": 6180,
+    "raw_signal_clusters": 61,
+    "causal_comparable_clusters": 48,
+    "causal_positive_clusters": 3,
+    "independent_positive_crash_episodes": 1,
+    "comparable_peak_episodes": 3,
+    "real_breadth_start": "2007-01-01",
+    "clean_forward_oos_start": "2026-07-05"
+  },
+  "causal_comparison": {
+    "baseline_auc": 0.6148148148148148,
+    "challenger_auc": 0.6962962962962963,
+    "auc_delta": 0.08148148148148149,
+    "baseline_true_median_similarity": 0.8442311983932158,
+    "baseline_false_median_similarity": 0.7391925687745623,
+    "challenger_true_median_similarity": 0.827047534032582,
+    "challenger_false_median_similarity": 0.6590822904816079
+  },
+  "canonical_exit_outcomes": {
+    "signals": 17,
+    "drops": 4,
+    "raw_rate": 0.23529411764705882,
+    "posterior_probability": 0.25,
+    "jeffreys_90_interval": [
+      0.10373041510550864,
+      0.4285857386568848
+    ],
+    "by_reason": {
+      "bearish-divergence": {
+        "signals": 9,
+        "drops": 1,
+        "raw_rate": 0.1111111111111111,
+        "posterior_probability": 0.15,
+        "jeffreys_90_interval": [
+          0.01991908855633614,
+          0.36066985006432806
+        ]
+      },
+      "climax-top": {
+        "signals": 7,
+        "drops": 2,
+        "raw_rate": 0.2857142857142857,
+        "posterior_probability": 0.3125,
+        "jeffreys_90_interval": [
+          0.08811560270385126,
+          0.5928846799465075
+        ]
+      },
+      "trailing-stop": {
+        "signals": 1,
+        "drops": 1,
+        "raw_rate": 1.0,
+        "posterior_probability": 0.75,
+        "jeffreys_90_interval": [
+          0.2285198138063288,
+          0.9984570806973271
+        ]
+      }
+    }
+  },
+  "current": {
+    "date": "2026-07-30T00:00:00",
+    "sell_vote_fraction": 0.0,
+    "conditions": {
+      "price_condition_met": false,
+      "breadth_fall_condition_met": false,
+      "breadth_cap_condition_met": false,
+      "bearish_divergence_active": false
+    },
+    "strategy_sell_state": {
+      "position": "IN",
+      "bearish_divergence_active": false,
+      "climax_top_active": false,
+      "trailing_stop_active": false,
+      "canonical_sell_reason": null,
+      "macd_cross_age_sessions": 38,
+      "extension_age_sessions": 71,
+      "drawdown_from_trade_high_pct": -8.33072412151099
+    },
+    "baseline_causal_peak_similarity_percentile": 0.22993953260336655,
+    "challenger_causal_peak_similarity_percentile": 0.21751920248406603,
+    "challenger_nearest_peak_zone_date": "2022-01-12T00:00:00",
+    "challenger_nearest_peak_episode": 4
+  },
+  "decision": "reject",
+  "decision_reason": "Causal AUC improved, but every positive cluster is the same 2020 crash episode, triggering the pre-registered single-episode falsification rule; canonical divergence precision is also low.",
+  "limitations": [
+    "All positive raw clusters belong to the same 2020 crash episode.",
+    "Pre-2007 breadth is synthetic and the 2000 peak lacks a comparable sell vote.",
+    "Similarity percentile is a rank, not a calibrated probability of loss.",
+    "Only observations after 2026-07-05 are clean forward OOS and there is no completed forward trade.",
+    "The frozen baseline strategy and execution are unchanged by this diagnostic."
+  ],
+  "artifacts": {
+    "result_json": "/Users/wongkaho/Downloads/spy500_history/qqq_current_sell_state_vector_results.json",
+    "signal_vectors_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_current_sell_state_vector_signals.csv",
+    "canonical_exits_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_current_sell_state_vector_exits.csv"
+  }
+}

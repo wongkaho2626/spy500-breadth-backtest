@@ -1,0 +1,2120 @@
+{
+  "idea_card": "/Users/wongkaho/Downloads/spy500_history/docs/research/vector_ma200_recross_filter_idea.md",
+  "configuration": {
+    "features": [
+      "spx_daily_change_pct",
+      "ndx_return_60_pct",
+      "breadth",
+      "breadth_fall_60_points",
+      "spx_drawdown_252_pct",
+      "vix"
+    ],
+    "buy_horizon_sessions": 126,
+    "target_terminal_return": 0.1,
+    "maximum_adverse_return": -0.15,
+    "neighbors": 15,
+    "primary_probability_threshold": 0.6,
+    "sensitivity_thresholds": [
+      0.5,
+      0.6,
+      0.7
+    ],
+    "entry_change": "retain washout; require vector threshold for MA200 recross",
+    "retained_exits": [
+      "bearish-divergence",
+      "climax-top",
+      "25% trailing-stop"
+    ],
+    "signal_timing": "close",
+    "fill_timing": "next-session open",
+    "attempted_variants_this_round": 3,
+    "related_prior_trials_for_multiplicity": 570
+  },
+  "data": {
+    "start": "2002-01-02T00:00:00",
+    "end": "2026-07-30T00:00:00",
+    "bars": 6180,
+    "resolved_positive_label_rate": 0.4390485629335976,
+    "real_breadth_start": "2007-01-01",
+    "clean_forward_oos_start": "2026-07-05",
+    "clean_forward_oos_bars": 19
+  },
+  "baseline_parity": {
+    "engine": "canonical qqq_backtest.run_strategy in both branches",
+    "equity_max_absolute_difference": 0.0,
+    "trade_signatures_identical": true,
+    "open_trade_identical": true,
+    "passed": true
+  },
+  "baseline": {
+    "metrics": {
+      "total_return": 90.50922489983103,
+      "cagr": 0.20177874222989312,
+      "annual_volatility": 0.18203978189510653,
+      "sharpe": 1.1030005108979188,
+      "sortino": 0.9363760800091315,
+      "calmar": 0.6269388498909152,
+      "max_drawdown": -0.3218475649818189,
+      "ulcer_index": 0.058080187733478714,
+      "time_underwater": 0.8517799352750809,
+      "var_95_daily": -0.017768979455746133,
+      "cvar_95_daily": -0.02740531710062323,
+      "skewness": 0.31049617315895034,
+      "excess_kurtosis": 9.87973816213126,
+      "jarque_bera_stat": 25183.964842833953,
+      "jarque_bera_p": 0.0,
+      "autocorrelation_lags_1_10": [
+        -0.09347127167457164,
+        0.008252117776853536,
+        -0.030502195919338945,
+        -0.006799043239867116,
+        -0.012398733054299593,
+        -0.03625483716140999,
+        0.00846588407561951,
+        -0.02217385634710131,
+        0.031641407843977246,
+        0.019022213749680255
+      ],
+      "effective_daily_observations": 5445.188691933956,
+      "mean_return_t_stat": 5.1272194985909865,
+      "psr_vs_zero": 0.999999866522797,
+      "positive_months": 0.5306122448979592,
+      "rolling_sharpe_252_min": -1.2106701122948609,
+      "rolling_sharpe_252_max": 3.1198159847695157,
+      "rolling_sharpe_252_std": 0.7477472610713178,
+      "completed_trades": 17,
+      "win_rate": 0.9411764705882353,
+      "profit_factor": 50.21102079773837,
+      "expectancy": 0.31286969613214977,
+      "average_win": 0.3391791254299209,
+      "average_loss": -0.10808117263218783,
+      "payoff_ratio": 3.138188799858648,
+      "exposure": 0.7309061488673139,
+      "round_trips_per_year": 0.6918384401114206
+    },
+    "early_period": {
+      "start": "2002-01-02T00:00:00",
+      "end": "2013-12-31T00:00:00",
+      "observations": 3017,
+      "cagr": 0.17541907509173038,
+      "sharpe": 0.9601160817313814,
+      "max_drawdown": -0.3218475649818189,
+      "annual_volatility": 0.18684590056408315
+    },
+    "late_period": {
+      "start": "2014-01-02T00:00:00",
+      "end": "2026-07-30T00:00:00",
+      "observations": 3161,
+      "cagr": 0.22835243024790963,
+      "sharpe": 1.2511372849533708,
+      "max_drawdown": -0.2252864621295675,
+      "annual_volatility": 0.17736341723414314
+    },
+    "real_breadth_period": {
+      "start": "2007-01-03T00:00:00",
+      "end": "2026-07-30T00:00:00",
+      "observations": 4923,
+      "cagr": 0.22592347357428277,
+      "sharpe": 1.1749669911973397,
+      "max_drawdown": -0.3218475649818189,
+      "annual_volatility": 0.1888989682793038
+    },
+    "clean_forward_slice": {
+      "start": "2026-07-06T00:00:00",
+      "end": "2026-07-30T00:00:00",
+      "observations": 18,
+      "cagr": -0.5913637789400646,
+      "sharpe": -3.1988298568975297,
+      "max_drawdown": -0.0882746115605273,
+      "annual_volatility": 0.247925801534548
+    },
+    "entry_label_outcomes": {
+      "entries": 18,
+      "resolved_entries": 18,
+      "successful_entries": 11,
+      "resolved_success_rate": 0.6111111111111112,
+      "outcomes": [
+        {
+          "signal_date": "2002-07-23T00:00:00",
+          "entry_date": "2002-07-24T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.15147967262103879,
+          "future_ndx_min_return_126": -0.10278539729265634
+        },
+        {
+          "signal_date": "2002-10-09T00:00:00",
+          "entry_date": "2002-10-10T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.27955710782492393,
+          "future_ndx_min_return_126": 0.0522033142602365
+        },
+        {
+          "signal_date": "2003-01-09T00:00:00",
+          "entry_date": "2003-01-10T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.1900655174016077,
+          "future_ndx_min_return_126": -0.11537567956879324
+        },
+        {
+          "signal_date": "2004-03-24T00:00:00",
+          "entry_date": "2004-03-25T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": false,
+          "future_ndx_return_126": 0.012439755112674256,
+          "future_ndx_min_return_126": -0.05603317268030039
+        },
+        {
+          "signal_date": "2005-03-30T00:00:00",
+          "entry_date": "2005-03-31T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": false,
+          "future_ndx_return_126": 0.05168460991861856,
+          "future_ndx_min_return_126": -0.05690669955890448
+        },
+        {
+          "signal_date": "2008-01-22T00:00:00",
+          "entry_date": "2008-01-23T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": false,
+          "future_ndx_return_126": 0.01448532810576908,
+          "future_ndx_min_return_126": -0.06826649439466248
+        },
+        {
+          "signal_date": "2008-10-16T00:00:00",
+          "entry_date": "2008-10-17T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": false,
+          "future_ndx_return_126": -0.0027418752903722865,
+          "future_ndx_min_return_126": -0.21056078966008362
+        },
+        {
+          "signal_date": "2008-11-21T00:00:00",
+          "entry_date": "2008-11-24T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.2913768803485728,
+          "future_ndx_min_return_126": -0.038412999622318256
+        },
+        {
+          "signal_date": "2009-01-30T00:00:00",
+          "entry_date": "2009-02-02T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.35849184494810404,
+          "future_ndx_min_return_126": -0.11555178987502657
+        },
+        {
+          "signal_date": "2009-03-06T00:00:00",
+          "entry_date": "2009-03-09T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.5083873391565699,
+          "future_ndx_min_return_126": -0.01956419648727359
+        },
+        {
+          "signal_date": "2011-10-05T00:00:00",
+          "entry_date": "2011-10-06T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.2655937180738237,
+          "future_ndx_min_return_126": -0.014609876441402325
+        },
+        {
+          "signal_date": "2015-08-24T00:00:00",
+          "entry_date": "2015-08-25T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": false,
+          "future_ndx_return_126": 0.04012776704798693,
+          "future_ndx_min_return_126": -0.02248303867676915
+        },
+        {
+          "signal_date": "2018-10-12T00:00:00",
+          "entry_date": "2018-10-15T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": false,
+          "future_ndx_return_126": 0.06951312033599688,
+          "future_ndx_min_return_126": -0.17574725346887954
+        },
+        {
+          "signal_date": "2020-03-13T00:00:00",
+          "entry_date": "2020-03-16T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.38674664738857767,
+          "future_ndx_min_return_126": -0.12519542829126262
+        },
+        {
+          "signal_date": "2022-06-13T00:00:00",
+          "entry_date": "2022-06-14T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": false,
+          "future_ndx_return_126": 0.03704005556185508,
+          "future_ndx_min_return_126": -0.052950306157160565
+        },
+        {
+          "signal_date": "2023-01-26T00:00:00",
+          "entry_date": "2023-01-27T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.3069705961425486,
+          "future_ndx_min_return_126": -0.018354592133082326
+        },
+        {
+          "signal_date": "2023-10-27T00:00:00",
+          "entry_date": "2023-10-30T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.22991350044639014,
+          "future_ndx_min_return_126": 0.010936911600643695
+        },
+        {
+          "signal_date": "2025-04-04T00:00:00",
+          "entry_date": "2025-04-07T00:00:00",
+          "closed_trade": false,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.4357392069066601,
+          "future_ndx_min_return_126": -0.017663254338217027
+        }
+      ]
+    },
+    "exit_reason_counts": {
+      "bearish-divergence": 9,
+      "climax-top": 7,
+      "trailing-stop": 1
+    },
+    "trigger_counts": {
+      "washout": 13,
+      "ma200_recross": 5,
+      "all_entries": 18
+    },
+    "trade_bootstrap": {
+      "completed_trades": 17,
+      "simulations": 5000,
+      "terminal_return_percentiles": {
+        "p05": 9.108858431354555,
+        "p50": 51.17089330591261,
+        "p95": 330.13060998618676
+      },
+      "max_drawdown_percentiles": {
+        "p05": -0.2044808053868269,
+        "p50": -0.10808117263218786,
+        "p95": 0.0
+      }
+    },
+    "statistical_diagnostics": {
+      "ljung_box_lag": 10,
+      "ljung_box_q": 81.47911055121261,
+      "ljung_box_p": 2.5737003777998253e-13,
+      "related_trials": 570,
+      "expected_max_annual_sharpe": 0.662757002895246,
+      "deflated_sharpe_probability": 0.9799974499348616,
+      "adf_return_stationarity": "not computed: statsmodels is unavailable; daily strategy returns, not price levels, are evaluated"
+    }
+  },
+  "challenger_primary": {
+    "metrics": {
+      "total_return": 74.85145374293977,
+      "cagr": 0.19263547528771774,
+      "annual_volatility": 0.17104736760582825,
+      "sharpe": 1.117756042143811,
+      "sortino": 0.8700527375061673,
+      "calmar": 0.5984677030554945,
+      "max_drawdown": -0.32188115466250167,
+      "ulcer_index": 0.06190931609966883,
+      "time_underwater": 0.8587378640776699,
+      "var_95_daily": -0.016319204497180283,
+      "cvar_95_daily": -0.026328994426454602,
+      "skewness": 0.40272010023724686,
+      "excess_kurtosis": 12.741038993044395,
+      "jarque_bera_stat": 41887.24054792095,
+      "jarque_bera_p": 0.0,
+      "autocorrelation_lags_1_10": [
+        -0.10439572230415586,
+        0.014598765833573784,
+        -0.02894931250852749,
+        -0.011749609899501384,
+        -0.010549226773400124,
+        -0.029358537432748164,
+        0.013239194839715708,
+        -0.02168622711478773,
+        0.03918003794774608,
+        0.017486939305509517
+      ],
+      "effective_daily_observations": 5285.6696317392925,
+      "mean_return_t_stat": 5.119137128380066,
+      "psr_vs_zero": 0.9999998659981867,
+      "positive_months": 0.45918367346938777,
+      "rolling_sharpe_252_min": -1.44571123270018,
+      "rolling_sharpe_252_max": 3.1198061206968117,
+      "rolling_sharpe_252_std": 0.734836531651423,
+      "completed_trades": 14,
+      "win_rate": 0.9285714285714286,
+      "profit_factor": 48.605526586111424,
+      "expectancy": 0.36751865265712264,
+      "average_win": 0.40410325460245416,
+      "average_loss": -0.10808117263218783,
+      "payoff_ratio": 3.7388866604701096,
+      "exposure": 0.6121359223300971,
+      "round_trips_per_year": 0.5697493036211699
+    },
+    "early_period": {
+      "start": "2002-01-02T00:00:00",
+      "end": "2013-12-31T00:00:00",
+      "observations": 3017,
+      "cagr": 0.14125460483626862,
+      "sharpe": 0.8670296957730055,
+      "max_drawdown": -0.32188115466250167,
+      "annual_volatility": 0.16918125634140196
+    },
+    "late_period": {
+      "start": "2014-01-02T00:00:00",
+      "end": "2026-07-30T00:00:00",
+      "observations": 3161,
+      "cagr": 0.2446920941254842,
+      "sharpe": 1.3562131148113301,
+      "max_drawdown": -0.21779035616710973,
+      "annual_volatility": 0.17280275155522917
+    },
+    "real_breadth_period": {
+      "start": "2007-01-03T00:00:00",
+      "end": "2026-07-30T00:00:00",
+      "observations": 4923,
+      "cagr": 0.22864262938206537,
+      "sharpe": 1.2097390229664182,
+      "max_drawdown": -0.32188115466250167,
+      "annual_volatility": 0.18464432000255726
+    },
+    "clean_forward_slice": {
+      "start": "2026-07-06T00:00:00",
+      "end": "2026-07-30T00:00:00",
+      "observations": 18,
+      "cagr": -0.5913637789400646,
+      "sharpe": -3.1988298568975124,
+      "max_drawdown": -0.08827461156052752,
+      "annual_volatility": 0.24792580153454838
+    },
+    "entry_label_outcomes": {
+      "entries": 15,
+      "resolved_entries": 15,
+      "successful_entries": 11,
+      "resolved_success_rate": 0.7333333333333333,
+      "outcomes": [
+        {
+          "signal_date": "2002-07-23T00:00:00",
+          "entry_date": "2002-07-24T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.15147967262103879,
+          "future_ndx_min_return_126": -0.10278539729265634
+        },
+        {
+          "signal_date": "2002-10-09T00:00:00",
+          "entry_date": "2002-10-10T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.27955710782492393,
+          "future_ndx_min_return_126": 0.0522033142602365
+        },
+        {
+          "signal_date": "2008-01-22T00:00:00",
+          "entry_date": "2008-01-23T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": false,
+          "future_ndx_return_126": 0.01448532810576908,
+          "future_ndx_min_return_126": -0.06826649439466248
+        },
+        {
+          "signal_date": "2008-10-16T00:00:00",
+          "entry_date": "2008-10-17T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": false,
+          "future_ndx_return_126": -0.0027418752903722865,
+          "future_ndx_min_return_126": -0.21056078966008362
+        },
+        {
+          "signal_date": "2008-11-21T00:00:00",
+          "entry_date": "2008-11-24T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.2913768803485728,
+          "future_ndx_min_return_126": -0.038412999622318256
+        },
+        {
+          "signal_date": "2009-01-30T00:00:00",
+          "entry_date": "2009-02-02T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.35849184494810404,
+          "future_ndx_min_return_126": -0.11555178987502657
+        },
+        {
+          "signal_date": "2009-03-06T00:00:00",
+          "entry_date": "2009-03-09T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.5083873391565699,
+          "future_ndx_min_return_126": -0.01956419648727359
+        },
+        {
+          "signal_date": "2011-10-05T00:00:00",
+          "entry_date": "2011-10-06T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.2655937180738237,
+          "future_ndx_min_return_126": -0.014609876441402325
+        },
+        {
+          "signal_date": "2015-08-24T00:00:00",
+          "entry_date": "2015-08-25T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": false,
+          "future_ndx_return_126": 0.04012776704798693,
+          "future_ndx_min_return_126": -0.02248303867676915
+        },
+        {
+          "signal_date": "2018-12-21T00:00:00",
+          "entry_date": "2018-12-24T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.2555138789658913,
+          "future_ndx_min_return_126": -0.024346074462173517
+        },
+        {
+          "signal_date": "2020-03-13T00:00:00",
+          "entry_date": "2020-03-16T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.38674664738857767,
+          "future_ndx_min_return_126": -0.12519542829126262
+        },
+        {
+          "signal_date": "2022-06-13T00:00:00",
+          "entry_date": "2022-06-14T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": false,
+          "future_ndx_return_126": 0.03704005556185508,
+          "future_ndx_min_return_126": -0.052950306157160565
+        },
+        {
+          "signal_date": "2023-01-31T00:00:00",
+          "entry_date": "2023-02-01T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.27010650367338096,
+          "future_ndx_min_return_126": -0.02244683286054372
+        },
+        {
+          "signal_date": "2023-10-27T00:00:00",
+          "entry_date": "2023-10-30T00:00:00",
+          "closed_trade": true,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.22991350044639014,
+          "future_ndx_min_return_126": 0.010936911600643695
+        },
+        {
+          "signal_date": "2025-04-04T00:00:00",
+          "entry_date": "2025-04-07T00:00:00",
+          "closed_trade": false,
+          "label_resolved": true,
+          "successful_buy_outcome": true,
+          "future_ndx_return_126": 0.4357392069066601,
+          "future_ndx_min_return_126": -0.017663254338217027
+        }
+      ]
+    },
+    "exit_reason_counts": {
+      "bearish-divergence": 7,
+      "climax-top": 6,
+      "trailing-stop": 1
+    },
+    "trigger_counts": {
+      "washout": 14,
+      "ma200_recross": 1,
+      "all_entries": 15
+    },
+    "trade_bootstrap": {
+      "completed_trades": 14,
+      "simulations": 5000,
+      "terminal_return_percentiles": {
+        "p05": 7.645875224387902,
+        "p50": 42.826217743109055,
+        "p95": 268.2829146304524
+      },
+      "max_drawdown_percentiles": {
+        "p05": -0.2044808053868269,
+        "p50": -0.10808117263218786,
+        "p95": 0.0
+      }
+    },
+    "statistical_diagnostics": {
+      "ljung_box_lag": 10,
+      "ljung_box_q": 96.1402302351803,
+      "ljung_box_p": 3.217971309487058e-16,
+      "related_trials": 570,
+      "expected_max_annual_sharpe": 0.6717192528094255,
+      "deflated_sharpe_probability": 0.9799617648805213,
+      "adf_return_stationarity": "not computed: statsmodels is unavailable; daily strategy returns, not price levels, are evaluated"
+    },
+    "baseline_recross_audit": {
+      "baseline_recross_entries": 5,
+      "passed_filter": 0,
+      "vetoed_by_filter": 5,
+      "decisions": [
+        {
+          "signal_date": "2003-01-09T00:00:00",
+          "entry_date": "2003-01-10T00:00:00",
+          "buy_probability": null,
+          "filter_passed": false
+        },
+        {
+          "signal_date": "2004-03-24T00:00:00",
+          "entry_date": "2004-03-25T00:00:00",
+          "buy_probability": 0.4258898907681082,
+          "filter_passed": false
+        },
+        {
+          "signal_date": "2005-03-30T00:00:00",
+          "entry_date": "2005-03-31T00:00:00",
+          "buy_probability": 0.046095642436670387,
+          "filter_passed": false
+        },
+        {
+          "signal_date": "2018-10-12T00:00:00",
+          "entry_date": "2018-10-15T00:00:00",
+          "buy_probability": 0.3229394458589309,
+          "filter_passed": false
+        },
+        {
+          "signal_date": "2023-01-26T00:00:00",
+          "entry_date": "2023-01-27T00:00:00",
+          "buy_probability": 0.4001261197071538,
+          "filter_passed": false
+        }
+      ]
+    },
+    "challenger_entry_audit": {
+      "entries": 15,
+      "recross_filter_violations": 0,
+      "outcomes": [
+        {
+          "signal_date": "2002-07-23T00:00:00",
+          "entry_date": "2002-07-24T00:00:00",
+          "buy_trigger": "VIX+MA200",
+          "buy_probability": null,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2002-10-09T00:00:00",
+          "entry_date": "2002-10-10T00:00:00",
+          "buy_trigger": "VIX+MA200",
+          "buy_probability": null,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2008-01-22T00:00:00",
+          "entry_date": "2008-01-23T00:00:00",
+          "buy_trigger": "VIX",
+          "buy_probability": 0.41719151391197445,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2008-10-16T00:00:00",
+          "entry_date": "2008-10-17T00:00:00",
+          "buy_trigger": "VIX",
+          "buy_probability": 0.4802544746480689,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2008-11-21T00:00:00",
+          "entry_date": "2008-11-24T00:00:00",
+          "buy_trigger": "VIX",
+          "buy_probability": 0.4661753276561239,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2009-01-30T00:00:00",
+          "entry_date": "2009-02-02T00:00:00",
+          "buy_trigger": "VIX",
+          "buy_probability": 0.6721094836622108,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2009-03-06T00:00:00",
+          "entry_date": "2009-03-09T00:00:00",
+          "buy_trigger": "VIX",
+          "buy_probability": 0.6490645510684996,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2011-10-05T00:00:00",
+          "entry_date": "2011-10-06T00:00:00",
+          "buy_trigger": "VIX",
+          "buy_probability": 0.42272725764161717,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2015-08-24T00:00:00",
+          "entry_date": "2015-08-25T00:00:00",
+          "buy_trigger": "VIX",
+          "buy_probability": 0.6398668320317116,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2018-12-21T00:00:00",
+          "entry_date": "2018-12-24T00:00:00",
+          "buy_trigger": "VIX",
+          "buy_probability": 0.40614473274847096,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2020-03-13T00:00:00",
+          "entry_date": "2020-03-16T00:00:00",
+          "buy_trigger": "VIX",
+          "buy_probability": 0.438105017638742,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2022-06-13T00:00:00",
+          "entry_date": "2022-06-14T00:00:00",
+          "buy_trigger": "VIX",
+          "buy_probability": 0.42946980511097316,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2023-01-31T00:00:00",
+          "entry_date": "2023-02-01T00:00:00",
+          "buy_trigger": "MA200-recross",
+          "buy_probability": 0.6047258130451532,
+          "recross_filter_passed": true
+        },
+        {
+          "signal_date": "2023-10-27T00:00:00",
+          "entry_date": "2023-10-30T00:00:00",
+          "buy_trigger": "MA200",
+          "buy_probability": 0.6707704721390891,
+          "recross_filter_passed": null
+        },
+        {
+          "signal_date": "2025-04-04T00:00:00",
+          "entry_date": "2025-04-07T00:00:00",
+          "buy_trigger": "VIX",
+          "buy_probability": 0.39684022124810836,
+          "recross_filter_passed": null
+        }
+      ]
+    },
+    "period_deltas_vs_baseline": {
+      "early_period": {
+        "cagr": -0.034164470255461765,
+        "sharpe": -0.09308638595837593,
+        "max_drawdown": -3.358968068278845e-05
+      },
+      "late_period": {
+        "cagr": 0.016339663877574573,
+        "sharpe": 0.10507582985795927,
+        "max_drawdown": 0.007496105962457755
+      },
+      "real_breadth_period": {
+        "cagr": 0.0027191558077825917,
+        "sharpe": 0.034772031769078504,
+        "max_drawdown": -3.358968068278845e-05
+      }
+    },
+    "paired_inference": {
+      "annualized_mean_difference": -0.009600743799840038,
+      "newey_west_lags": 21,
+      "hac_t_stat": -0.8346661009246795,
+      "hac_two_sided_p": 0.40390573326567025,
+      "block_size": 21,
+      "bootstrap_simulations": 2000,
+      "bootstrap_95_interval_annualized": [
+        -0.03202141349678573,
+        0.01273081870014069
+      ]
+    },
+    "guardrails": {
+      "primary_calmar_improved": false,
+      "cagr_within_two_percentage_points": true,
+      "max_drawdown_not_worse": false,
+      "completed_trades_not_increased": true,
+      "historical_cagr_effect_not_reversed": false,
+      "five_x_cost_improvement_retained": false,
+      "all_passed": false
+    }
+  },
+  "parameter_sensitivity": {
+    "0.50": {
+      "metrics": {
+        "total_return": 64.75279102846112,
+        "cagr": 0.18572103558254582,
+        "annual_volatility": 0.17263123336059422,
+        "sharpe": 1.0753134373332889,
+        "sortino": 0.8385834679335911,
+        "calmar": 0.5769937223082385,
+        "max_drawdown": -0.32187704718792576,
+        "ulcer_index": 0.058141843213519416,
+        "time_underwater": 0.8637540453074434,
+        "var_95_daily": -0.01668847067828084,
+        "cvar_95_daily": -0.02669641713884117,
+        "skewness": 0.3728659594614,
+        "excess_kurtosis": 12.296156245558603,
+        "jarque_bera_stat": 39000.53771740437,
+        "jarque_bera_p": 0.0,
+        "autocorrelation_lags_1_10": [
+          -0.10063460879905987,
+          0.01572157606501724,
+          -0.030106229185311764,
+          -0.014557032149827714,
+          -0.00742497448846902,
+          -0.03122745448964921,
+          0.012860286587604172,
+          -0.022137251925413905,
+          0.03792051500460175,
+          0.017562682170945053
+        ],
+        "effective_daily_observations": 5289.650438786613,
+        "mean_return_t_stat": 4.926611190783241,
+        "psr_vs_zero": 0.9999996253105927,
+        "positive_months": 0.46258503401360546,
+        "rolling_sharpe_252_min": -1.44571123270018,
+        "rolling_sharpe_252_max": 3.119797266570442,
+        "rolling_sharpe_252_std": 0.7586445945602847,
+        "completed_trades": 15,
+        "win_rate": 0.9333333333333333,
+        "profit_factor": 46.700207492041905,
+        "expectancy": 0.329288801018279,
+        "average_win": 0.3605295134218838,
+        "average_loss": -0.10808117263218783,
+        "payoff_ratio": 3.335729106574422,
+        "exposure": 0.6199029126213592,
+        "round_trips_per_year": 0.6104456824512535
+      },
+      "early_period": {
+        "start": "2002-01-02T00:00:00",
+        "end": "2013-12-31T00:00:00",
+        "observations": 3017,
+        "cagr": 0.14479251123133796,
+        "sharpe": 0.8831702041052111,
+        "max_drawdown": -0.32187704718792576,
+        "annual_volatility": 0.16970188806472813
+      },
+      "late_period": {
+        "start": "2014-01-02T00:00:00",
+        "end": "2026-07-30T00:00:00",
+        "observations": 3161,
+        "cagr": 0.2269983969625078,
+        "sharpe": 1.256911123924683,
+        "max_drawdown": -0.23035225603652376,
+        "annual_volatility": 0.17539068829091248
+      },
+      "real_breadth_period": {
+        "start": "2007-01-03T00:00:00",
+        "end": "2026-07-30T00:00:00",
+        "observations": 4923,
+        "cagr": 0.2173954736471615,
+        "sharpe": 1.1516661865884166,
+        "max_drawdown": -0.32187704718792576,
+        "annual_volatility": 0.18620278048120312
+      },
+      "clean_forward_slice": {
+        "start": "2026-07-06T00:00:00",
+        "end": "2026-07-30T00:00:00",
+        "observations": 18,
+        "cagr": -0.5913637789400654,
+        "sharpe": -3.198829856897508,
+        "max_drawdown": -0.0882746115605274,
+        "annual_volatility": 0.2479258015345487
+      },
+      "entry_label_outcomes": {
+        "entries": 16,
+        "resolved_entries": 16,
+        "successful_entries": 10,
+        "resolved_success_rate": 0.625,
+        "outcomes": [
+          {
+            "signal_date": "2002-07-23T00:00:00",
+            "entry_date": "2002-07-24T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.15147967262103879,
+            "future_ndx_min_return_126": -0.10278539729265634
+          },
+          {
+            "signal_date": "2002-10-09T00:00:00",
+            "entry_date": "2002-10-10T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.27955710782492393,
+            "future_ndx_min_return_126": 0.0522033142602365
+          },
+          {
+            "signal_date": "2004-05-13T00:00:00",
+            "entry_date": "2004-05-14T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": 0.09972549379361939,
+            "future_ndx_min_return_126": -0.07950094912814276
+          },
+          {
+            "signal_date": "2008-01-22T00:00:00",
+            "entry_date": "2008-01-23T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": 0.01448532810576908,
+            "future_ndx_min_return_126": -0.06826649439466248
+          },
+          {
+            "signal_date": "2008-10-16T00:00:00",
+            "entry_date": "2008-10-17T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": -0.0027418752903722865,
+            "future_ndx_min_return_126": -0.21056078966008362
+          },
+          {
+            "signal_date": "2008-11-21T00:00:00",
+            "entry_date": "2008-11-24T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.2913768803485728,
+            "future_ndx_min_return_126": -0.038412999622318256
+          },
+          {
+            "signal_date": "2009-01-30T00:00:00",
+            "entry_date": "2009-02-02T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.35849184494810404,
+            "future_ndx_min_return_126": -0.11555178987502657
+          },
+          {
+            "signal_date": "2009-03-06T00:00:00",
+            "entry_date": "2009-03-09T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.5083873391565699,
+            "future_ndx_min_return_126": -0.01956419648727359
+          },
+          {
+            "signal_date": "2011-10-05T00:00:00",
+            "entry_date": "2011-10-06T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.2655937180738237,
+            "future_ndx_min_return_126": -0.014609876441402325
+          },
+          {
+            "signal_date": "2015-08-24T00:00:00",
+            "entry_date": "2015-08-25T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": 0.04012776704798693,
+            "future_ndx_min_return_126": -0.02248303867676915
+          },
+          {
+            "signal_date": "2018-11-07T00:00:00",
+            "entry_date": "2018-11-08T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": 0.01679825298168991,
+            "future_ndx_min_return_126": -0.18100187002039392
+          },
+          {
+            "signal_date": "2020-03-13T00:00:00",
+            "entry_date": "2020-03-16T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.38674664738857767,
+            "future_ndx_min_return_126": -0.12519542829126262
+          },
+          {
+            "signal_date": "2022-06-13T00:00:00",
+            "entry_date": "2022-06-14T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": 0.03704005556185508,
+            "future_ndx_min_return_126": -0.052950306157160565
+          },
+          {
+            "signal_date": "2023-01-31T00:00:00",
+            "entry_date": "2023-02-01T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.27010650367338096,
+            "future_ndx_min_return_126": -0.02244683286054372
+          },
+          {
+            "signal_date": "2023-10-27T00:00:00",
+            "entry_date": "2023-10-30T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.22991350044639014,
+            "future_ndx_min_return_126": 0.010936911600643695
+          },
+          {
+            "signal_date": "2025-04-04T00:00:00",
+            "entry_date": "2025-04-07T00:00:00",
+            "closed_trade": false,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.4357392069066601,
+            "future_ndx_min_return_126": -0.017663254338217027
+          }
+        ]
+      },
+      "exit_reason_counts": {
+        "bearish-divergence": 8,
+        "climax-top": 6,
+        "trailing-stop": 1
+      },
+      "trigger_counts": {
+        "washout": 13,
+        "ma200_recross": 3,
+        "all_entries": 16
+      },
+      "trade_bootstrap": {
+        "completed_trades": 15,
+        "simulations": 5000,
+        "terminal_return_percentiles": {
+          "p05": 6.442367296248615,
+          "p50": 37.0374701913029,
+          "p95": 243.41796613491206
+        },
+        "max_drawdown_percentiles": {
+          "p05": -0.2044808053868269,
+          "p50": -0.10808117263218786,
+          "p95": 0.0
+        }
+      },
+      "statistical_diagnostics": {
+        "ljung_box_lag": 10,
+        "ljung_box_q": 92.2924462942623,
+        "ljung_box_p": 1.878152684686589e-15,
+        "related_trials": 570,
+        "expected_max_annual_sharpe": 0.6718825703934899,
+        "deflated_sharpe_probability": 0.9683022542660635,
+        "adf_return_stationarity": "not computed: statsmodels is unavailable; daily strategy returns, not price levels, are evaluated"
+      },
+      "baseline_recross_audit": {
+        "baseline_recross_entries": 5,
+        "passed_filter": 0,
+        "vetoed_by_filter": 5,
+        "decisions": [
+          {
+            "signal_date": "2003-01-09T00:00:00",
+            "entry_date": "2003-01-10T00:00:00",
+            "buy_probability": null,
+            "filter_passed": false
+          },
+          {
+            "signal_date": "2004-03-24T00:00:00",
+            "entry_date": "2004-03-25T00:00:00",
+            "buy_probability": 0.4258898907681082,
+            "filter_passed": false
+          },
+          {
+            "signal_date": "2005-03-30T00:00:00",
+            "entry_date": "2005-03-31T00:00:00",
+            "buy_probability": 0.046095642436670387,
+            "filter_passed": false
+          },
+          {
+            "signal_date": "2018-10-12T00:00:00",
+            "entry_date": "2018-10-15T00:00:00",
+            "buy_probability": 0.3229394458589309,
+            "filter_passed": false
+          },
+          {
+            "signal_date": "2023-01-26T00:00:00",
+            "entry_date": "2023-01-27T00:00:00",
+            "buy_probability": 0.4001261197071538,
+            "filter_passed": false
+          }
+        ]
+      },
+      "challenger_entry_audit": {
+        "entries": 16,
+        "recross_filter_violations": 0,
+        "outcomes": [
+          {
+            "signal_date": "2002-07-23T00:00:00",
+            "entry_date": "2002-07-24T00:00:00",
+            "buy_trigger": "VIX+MA200",
+            "buy_probability": null,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2002-10-09T00:00:00",
+            "entry_date": "2002-10-10T00:00:00",
+            "buy_trigger": "VIX+MA200",
+            "buy_probability": null,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2004-05-13T00:00:00",
+            "entry_date": "2004-05-14T00:00:00",
+            "buy_trigger": "MA200-recross",
+            "buy_probability": 0.5581879699585701,
+            "recross_filter_passed": true
+          },
+          {
+            "signal_date": "2008-01-22T00:00:00",
+            "entry_date": "2008-01-23T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.41719151391197445,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2008-10-16T00:00:00",
+            "entry_date": "2008-10-17T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.4802544746480689,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2008-11-21T00:00:00",
+            "entry_date": "2008-11-24T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.4661753276561239,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2009-01-30T00:00:00",
+            "entry_date": "2009-02-02T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.6721094836622108,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2009-03-06T00:00:00",
+            "entry_date": "2009-03-09T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.6490645510684996,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2011-10-05T00:00:00",
+            "entry_date": "2011-10-06T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.42272725764161717,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2015-08-24T00:00:00",
+            "entry_date": "2015-08-25T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.6398668320317116,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2018-11-07T00:00:00",
+            "entry_date": "2018-11-08T00:00:00",
+            "buy_trigger": "MA200-recross",
+            "buy_probability": 0.5345190152140576,
+            "recross_filter_passed": true
+          },
+          {
+            "signal_date": "2020-03-13T00:00:00",
+            "entry_date": "2020-03-16T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.438105017638742,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2022-06-13T00:00:00",
+            "entry_date": "2022-06-14T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.42946980511097316,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2023-01-31T00:00:00",
+            "entry_date": "2023-02-01T00:00:00",
+            "buy_trigger": "MA200-recross",
+            "buy_probability": 0.6047258130451532,
+            "recross_filter_passed": true
+          },
+          {
+            "signal_date": "2023-10-27T00:00:00",
+            "entry_date": "2023-10-30T00:00:00",
+            "buy_trigger": "MA200",
+            "buy_probability": 0.6707704721390891,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2025-04-04T00:00:00",
+            "entry_date": "2025-04-07T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.39684022124810836,
+            "recross_filter_passed": null
+          }
+        ]
+      },
+      "period_deltas_vs_baseline": {
+        "early_period": {
+          "cagr": -0.03062656386039242,
+          "sharpe": -0.07694587762617033,
+          "max_drawdown": -2.9482206106878905e-05
+        },
+        "late_period": {
+          "cagr": -0.0013540332854018455,
+          "sharpe": 0.0057738389713122285,
+          "max_drawdown": -0.005065793906956273
+        },
+        "real_breadth_period": {
+          "cagr": -0.008527999927121277,
+          "sharpe": -0.023300804608923142,
+          "max_drawdown": -2.9482206106878905e-05
+        }
+      }
+    },
+    "0.60": {
+      "metrics": {
+        "total_return": 74.85145374293977,
+        "cagr": 0.19263547528771774,
+        "annual_volatility": 0.17104736760582825,
+        "sharpe": 1.117756042143811,
+        "sortino": 0.8700527375061673,
+        "calmar": 0.5984677030554945,
+        "max_drawdown": -0.32188115466250167,
+        "ulcer_index": 0.06190931609966883,
+        "time_underwater": 0.8587378640776699,
+        "var_95_daily": -0.016319204497180283,
+        "cvar_95_daily": -0.026328994426454602,
+        "skewness": 0.40272010023724686,
+        "excess_kurtosis": 12.741038993044395,
+        "jarque_bera_stat": 41887.24054792095,
+        "jarque_bera_p": 0.0,
+        "autocorrelation_lags_1_10": [
+          -0.10439572230415586,
+          0.014598765833573784,
+          -0.02894931250852749,
+          -0.011749609899501384,
+          -0.010549226773400124,
+          -0.029358537432748164,
+          0.013239194839715708,
+          -0.02168622711478773,
+          0.03918003794774608,
+          0.017486939305509517
+        ],
+        "effective_daily_observations": 5285.6696317392925,
+        "mean_return_t_stat": 5.119137128380066,
+        "psr_vs_zero": 0.9999998659981867,
+        "positive_months": 0.45918367346938777,
+        "rolling_sharpe_252_min": -1.44571123270018,
+        "rolling_sharpe_252_max": 3.1198061206968117,
+        "rolling_sharpe_252_std": 0.734836531651423,
+        "completed_trades": 14,
+        "win_rate": 0.9285714285714286,
+        "profit_factor": 48.605526586111424,
+        "expectancy": 0.36751865265712264,
+        "average_win": 0.40410325460245416,
+        "average_loss": -0.10808117263218783,
+        "payoff_ratio": 3.7388866604701096,
+        "exposure": 0.6121359223300971,
+        "round_trips_per_year": 0.5697493036211699
+      },
+      "early_period": {
+        "start": "2002-01-02T00:00:00",
+        "end": "2013-12-31T00:00:00",
+        "observations": 3017,
+        "cagr": 0.14125460483626862,
+        "sharpe": 0.8670296957730055,
+        "max_drawdown": -0.32188115466250167,
+        "annual_volatility": 0.16918125634140196
+      },
+      "late_period": {
+        "start": "2014-01-02T00:00:00",
+        "end": "2026-07-30T00:00:00",
+        "observations": 3161,
+        "cagr": 0.2446920941254842,
+        "sharpe": 1.3562131148113301,
+        "max_drawdown": -0.21779035616710973,
+        "annual_volatility": 0.17280275155522917
+      },
+      "real_breadth_period": {
+        "start": "2007-01-03T00:00:00",
+        "end": "2026-07-30T00:00:00",
+        "observations": 4923,
+        "cagr": 0.22864262938206537,
+        "sharpe": 1.2097390229664182,
+        "max_drawdown": -0.32188115466250167,
+        "annual_volatility": 0.18464432000255726
+      },
+      "clean_forward_slice": {
+        "start": "2026-07-06T00:00:00",
+        "end": "2026-07-30T00:00:00",
+        "observations": 18,
+        "cagr": -0.5913637789400646,
+        "sharpe": -3.1988298568975124,
+        "max_drawdown": -0.08827461156052752,
+        "annual_volatility": 0.24792580153454838
+      },
+      "entry_label_outcomes": {
+        "entries": 15,
+        "resolved_entries": 15,
+        "successful_entries": 11,
+        "resolved_success_rate": 0.7333333333333333,
+        "outcomes": [
+          {
+            "signal_date": "2002-07-23T00:00:00",
+            "entry_date": "2002-07-24T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.15147967262103879,
+            "future_ndx_min_return_126": -0.10278539729265634
+          },
+          {
+            "signal_date": "2002-10-09T00:00:00",
+            "entry_date": "2002-10-10T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.27955710782492393,
+            "future_ndx_min_return_126": 0.0522033142602365
+          },
+          {
+            "signal_date": "2008-01-22T00:00:00",
+            "entry_date": "2008-01-23T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": 0.01448532810576908,
+            "future_ndx_min_return_126": -0.06826649439466248
+          },
+          {
+            "signal_date": "2008-10-16T00:00:00",
+            "entry_date": "2008-10-17T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": -0.0027418752903722865,
+            "future_ndx_min_return_126": -0.21056078966008362
+          },
+          {
+            "signal_date": "2008-11-21T00:00:00",
+            "entry_date": "2008-11-24T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.2913768803485728,
+            "future_ndx_min_return_126": -0.038412999622318256
+          },
+          {
+            "signal_date": "2009-01-30T00:00:00",
+            "entry_date": "2009-02-02T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.35849184494810404,
+            "future_ndx_min_return_126": -0.11555178987502657
+          },
+          {
+            "signal_date": "2009-03-06T00:00:00",
+            "entry_date": "2009-03-09T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.5083873391565699,
+            "future_ndx_min_return_126": -0.01956419648727359
+          },
+          {
+            "signal_date": "2011-10-05T00:00:00",
+            "entry_date": "2011-10-06T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.2655937180738237,
+            "future_ndx_min_return_126": -0.014609876441402325
+          },
+          {
+            "signal_date": "2015-08-24T00:00:00",
+            "entry_date": "2015-08-25T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": 0.04012776704798693,
+            "future_ndx_min_return_126": -0.02248303867676915
+          },
+          {
+            "signal_date": "2018-12-21T00:00:00",
+            "entry_date": "2018-12-24T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.2555138789658913,
+            "future_ndx_min_return_126": -0.024346074462173517
+          },
+          {
+            "signal_date": "2020-03-13T00:00:00",
+            "entry_date": "2020-03-16T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.38674664738857767,
+            "future_ndx_min_return_126": -0.12519542829126262
+          },
+          {
+            "signal_date": "2022-06-13T00:00:00",
+            "entry_date": "2022-06-14T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": 0.03704005556185508,
+            "future_ndx_min_return_126": -0.052950306157160565
+          },
+          {
+            "signal_date": "2023-01-31T00:00:00",
+            "entry_date": "2023-02-01T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.27010650367338096,
+            "future_ndx_min_return_126": -0.02244683286054372
+          },
+          {
+            "signal_date": "2023-10-27T00:00:00",
+            "entry_date": "2023-10-30T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.22991350044639014,
+            "future_ndx_min_return_126": 0.010936911600643695
+          },
+          {
+            "signal_date": "2025-04-04T00:00:00",
+            "entry_date": "2025-04-07T00:00:00",
+            "closed_trade": false,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.4357392069066601,
+            "future_ndx_min_return_126": -0.017663254338217027
+          }
+        ]
+      },
+      "exit_reason_counts": {
+        "bearish-divergence": 7,
+        "climax-top": 6,
+        "trailing-stop": 1
+      },
+      "trigger_counts": {
+        "washout": 14,
+        "ma200_recross": 1,
+        "all_entries": 15
+      },
+      "trade_bootstrap": {
+        "completed_trades": 14,
+        "simulations": 5000,
+        "terminal_return_percentiles": {
+          "p05": 7.645875224387902,
+          "p50": 42.826217743109055,
+          "p95": 268.2829146304524
+        },
+        "max_drawdown_percentiles": {
+          "p05": -0.2044808053868269,
+          "p50": -0.10808117263218786,
+          "p95": 0.0
+        }
+      },
+      "statistical_diagnostics": {
+        "ljung_box_lag": 10,
+        "ljung_box_q": 96.1402302351803,
+        "ljung_box_p": 3.217971309487058e-16,
+        "related_trials": 570,
+        "expected_max_annual_sharpe": 0.6717192528094255,
+        "deflated_sharpe_probability": 0.9799617648805213,
+        "adf_return_stationarity": "not computed: statsmodels is unavailable; daily strategy returns, not price levels, are evaluated"
+      },
+      "baseline_recross_audit": {
+        "baseline_recross_entries": 5,
+        "passed_filter": 0,
+        "vetoed_by_filter": 5,
+        "decisions": [
+          {
+            "signal_date": "2003-01-09T00:00:00",
+            "entry_date": "2003-01-10T00:00:00",
+            "buy_probability": null,
+            "filter_passed": false
+          },
+          {
+            "signal_date": "2004-03-24T00:00:00",
+            "entry_date": "2004-03-25T00:00:00",
+            "buy_probability": 0.4258898907681082,
+            "filter_passed": false
+          },
+          {
+            "signal_date": "2005-03-30T00:00:00",
+            "entry_date": "2005-03-31T00:00:00",
+            "buy_probability": 0.046095642436670387,
+            "filter_passed": false
+          },
+          {
+            "signal_date": "2018-10-12T00:00:00",
+            "entry_date": "2018-10-15T00:00:00",
+            "buy_probability": 0.3229394458589309,
+            "filter_passed": false
+          },
+          {
+            "signal_date": "2023-01-26T00:00:00",
+            "entry_date": "2023-01-27T00:00:00",
+            "buy_probability": 0.4001261197071538,
+            "filter_passed": false
+          }
+        ]
+      },
+      "challenger_entry_audit": {
+        "entries": 15,
+        "recross_filter_violations": 0,
+        "outcomes": [
+          {
+            "signal_date": "2002-07-23T00:00:00",
+            "entry_date": "2002-07-24T00:00:00",
+            "buy_trigger": "VIX+MA200",
+            "buy_probability": null,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2002-10-09T00:00:00",
+            "entry_date": "2002-10-10T00:00:00",
+            "buy_trigger": "VIX+MA200",
+            "buy_probability": null,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2008-01-22T00:00:00",
+            "entry_date": "2008-01-23T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.41719151391197445,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2008-10-16T00:00:00",
+            "entry_date": "2008-10-17T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.4802544746480689,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2008-11-21T00:00:00",
+            "entry_date": "2008-11-24T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.4661753276561239,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2009-01-30T00:00:00",
+            "entry_date": "2009-02-02T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.6721094836622108,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2009-03-06T00:00:00",
+            "entry_date": "2009-03-09T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.6490645510684996,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2011-10-05T00:00:00",
+            "entry_date": "2011-10-06T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.42272725764161717,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2015-08-24T00:00:00",
+            "entry_date": "2015-08-25T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.6398668320317116,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2018-12-21T00:00:00",
+            "entry_date": "2018-12-24T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.40614473274847096,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2020-03-13T00:00:00",
+            "entry_date": "2020-03-16T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.438105017638742,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2022-06-13T00:00:00",
+            "entry_date": "2022-06-14T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.42946980511097316,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2023-01-31T00:00:00",
+            "entry_date": "2023-02-01T00:00:00",
+            "buy_trigger": "MA200-recross",
+            "buy_probability": 0.6047258130451532,
+            "recross_filter_passed": true
+          },
+          {
+            "signal_date": "2023-10-27T00:00:00",
+            "entry_date": "2023-10-30T00:00:00",
+            "buy_trigger": "MA200",
+            "buy_probability": 0.6707704721390891,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2025-04-04T00:00:00",
+            "entry_date": "2025-04-07T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.39684022124810836,
+            "recross_filter_passed": null
+          }
+        ]
+      },
+      "period_deltas_vs_baseline": {
+        "early_period": {
+          "cagr": -0.034164470255461765,
+          "sharpe": -0.09308638595837593,
+          "max_drawdown": -3.358968068278845e-05
+        },
+        "late_period": {
+          "cagr": 0.016339663877574573,
+          "sharpe": 0.10507582985795927,
+          "max_drawdown": 0.007496105962457755
+        },
+        "real_breadth_period": {
+          "cagr": 0.0027191558077825917,
+          "sharpe": 0.034772031769078504,
+          "max_drawdown": -3.358968068278845e-05
+        }
+      },
+      "paired_inference": {
+        "annualized_mean_difference": -0.009600743799840038,
+        "newey_west_lags": 21,
+        "hac_t_stat": -0.8346661009246795,
+        "hac_two_sided_p": 0.40390573326567025,
+        "block_size": 21,
+        "bootstrap_simulations": 2000,
+        "bootstrap_95_interval_annualized": [
+          -0.03202141349678573,
+          0.01273081870014069
+        ]
+      },
+      "guardrails": {
+        "primary_calmar_improved": false,
+        "cagr_within_two_percentage_points": true,
+        "max_drawdown_not_worse": false,
+        "completed_trades_not_increased": true,
+        "historical_cagr_effect_not_reversed": false,
+        "five_x_cost_improvement_retained": false,
+        "all_passed": false
+      }
+    },
+    "0.70": {
+      "metrics": {
+        "total_return": 68.39705212112679,
+        "cagr": 0.18832685488642964,
+        "annual_volatility": 0.1697666597981851,
+        "sharpe": 1.1035290202353982,
+        "sortino": 0.8496900142509247,
+        "calmar": 0.5850819538779579,
+        "max_drawdown": -0.32188115466250167,
+        "ulcer_index": 0.065313084491046,
+        "time_underwater": 0.86084142394822,
+        "var_95_daily": -0.01614836377108998,
+        "cvar_95_daily": -0.02626319466017287,
+        "skewness": 0.40661875577587914,
+        "excess_kurtosis": 13.16126434355887,
+        "jarque_bera_stat": 44688.12968046462,
+        "jarque_bera_p": 0.0,
+        "autocorrelation_lags_1_10": [
+          -0.10604677034428255,
+          0.017449241924693326,
+          -0.029739976716500683,
+          -0.010383294995524935,
+          -0.007503392651261525,
+          -0.030740787145452798,
+          0.013293083482378393,
+          -0.021897828289536597,
+          0.03822014796492923,
+          0.016912292601839577
+        ],
+        "effective_daily_observations": 5273.311259386015,
+        "mean_return_t_stat": 5.048067941860981,
+        "psr_vs_zero": 0.9999998040903023,
+        "positive_months": 0.4523809523809524,
+        "rolling_sharpe_252_min": -1.44571123270018,
+        "rolling_sharpe_252_max": 3.075160395669705,
+        "rolling_sharpe_252_std": 0.7641143022695346,
+        "completed_trades": 13,
+        "win_rate": 0.9230769230769231,
+        "profit_factor": 47.74493623437477,
+        "expectancy": 0.38863442483292865,
+        "average_win": 0.430027391288355,
+        "average_loss": -0.10808117263218783,
+        "payoff_ratio": 3.978744686197898,
+        "exposure": 0.6021035598705502,
+        "round_trips_per_year": 0.5290529247910863
+      },
+      "early_period": {
+        "start": "2002-01-02T00:00:00",
+        "end": "2013-12-31T00:00:00",
+        "observations": 3017,
+        "cagr": 0.14125460483626862,
+        "sharpe": 0.8670296957730055,
+        "max_drawdown": -0.32188115466250167,
+        "annual_volatility": 0.16918125634140196
+      },
+      "late_period": {
+        "start": "2014-01-02T00:00:00",
+        "end": "2026-07-30T00:00:00",
+        "observations": 3161,
+        "cagr": 0.23591854016890546,
+        "sharpe": 1.3318099603841602,
+        "max_drawdown": -0.21779035616710973,
+        "annual_volatility": 0.17032294652038896
+      },
+      "real_breadth_period": {
+        "start": "2007-01-03T00:00:00",
+        "end": "2026-07-30T00:00:00",
+        "observations": 4923,
+        "cagr": 0.2230719871736382,
+        "sharpe": 1.1931946667589468,
+        "max_drawdown": -0.32188115466250167,
+        "annual_volatility": 0.18315805804210963
+      },
+      "clean_forward_slice": {
+        "start": "2026-07-06T00:00:00",
+        "end": "2026-07-30T00:00:00",
+        "observations": 18,
+        "cagr": -0.5913637789400646,
+        "sharpe": -3.198829856897505,
+        "max_drawdown": -0.08827461156052752,
+        "annual_volatility": 0.24792580153454852
+      },
+      "entry_label_outcomes": {
+        "entries": 14,
+        "resolved_entries": 14,
+        "successful_entries": 10,
+        "resolved_success_rate": 0.7142857142857143,
+        "outcomes": [
+          {
+            "signal_date": "2002-07-23T00:00:00",
+            "entry_date": "2002-07-24T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.15147967262103879,
+            "future_ndx_min_return_126": -0.10278539729265634
+          },
+          {
+            "signal_date": "2002-10-09T00:00:00",
+            "entry_date": "2002-10-10T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.27955710782492393,
+            "future_ndx_min_return_126": 0.0522033142602365
+          },
+          {
+            "signal_date": "2008-01-22T00:00:00",
+            "entry_date": "2008-01-23T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": 0.01448532810576908,
+            "future_ndx_min_return_126": -0.06826649439466248
+          },
+          {
+            "signal_date": "2008-10-16T00:00:00",
+            "entry_date": "2008-10-17T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": -0.0027418752903722865,
+            "future_ndx_min_return_126": -0.21056078966008362
+          },
+          {
+            "signal_date": "2008-11-21T00:00:00",
+            "entry_date": "2008-11-24T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.2913768803485728,
+            "future_ndx_min_return_126": -0.038412999622318256
+          },
+          {
+            "signal_date": "2009-01-30T00:00:00",
+            "entry_date": "2009-02-02T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.35849184494810404,
+            "future_ndx_min_return_126": -0.11555178987502657
+          },
+          {
+            "signal_date": "2009-03-06T00:00:00",
+            "entry_date": "2009-03-09T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.5083873391565699,
+            "future_ndx_min_return_126": -0.01956419648727359
+          },
+          {
+            "signal_date": "2011-10-05T00:00:00",
+            "entry_date": "2011-10-06T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.2655937180738237,
+            "future_ndx_min_return_126": -0.014609876441402325
+          },
+          {
+            "signal_date": "2015-08-24T00:00:00",
+            "entry_date": "2015-08-25T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": 0.04012776704798693,
+            "future_ndx_min_return_126": -0.02248303867676915
+          },
+          {
+            "signal_date": "2018-12-21T00:00:00",
+            "entry_date": "2018-12-24T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.2555138789658913,
+            "future_ndx_min_return_126": -0.024346074462173517
+          },
+          {
+            "signal_date": "2020-03-13T00:00:00",
+            "entry_date": "2020-03-16T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.38674664738857767,
+            "future_ndx_min_return_126": -0.12519542829126262
+          },
+          {
+            "signal_date": "2022-06-13T00:00:00",
+            "entry_date": "2022-06-14T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": false,
+            "future_ndx_return_126": 0.03704005556185508,
+            "future_ndx_min_return_126": -0.052950306157160565
+          },
+          {
+            "signal_date": "2023-10-27T00:00:00",
+            "entry_date": "2023-10-30T00:00:00",
+            "closed_trade": true,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.22991350044639014,
+            "future_ndx_min_return_126": 0.010936911600643695
+          },
+          {
+            "signal_date": "2025-04-04T00:00:00",
+            "entry_date": "2025-04-07T00:00:00",
+            "closed_trade": false,
+            "label_resolved": true,
+            "successful_buy_outcome": true,
+            "future_ndx_return_126": 0.4357392069066601,
+            "future_ndx_min_return_126": -0.017663254338217027
+          }
+        ]
+      },
+      "exit_reason_counts": {
+        "climax-top": 6,
+        "bearish-divergence": 6,
+        "trailing-stop": 1
+      },
+      "trigger_counts": {
+        "washout": 14,
+        "ma200_recross": 0,
+        "all_entries": 14
+      },
+      "trade_bootstrap": {
+        "completed_trades": 13,
+        "simulations": 5000,
+        "terminal_return_percentiles": {
+          "p05": 7.0091729814065316,
+          "p50": 40.31949085749484,
+          "p95": 228.07521744664103
+        },
+        "max_drawdown_percentiles": {
+          "p05": -0.2044808053868269,
+          "p50": -0.10808117263218786,
+          "p95": 0.0
+        }
+      },
+      "statistical_diagnostics": {
+        "ljung_box_lag": 10,
+        "ljung_box_q": 98.61040532456857,
+        "ljung_box_p": 1.0335208424244977e-16,
+        "related_trials": 570,
+        "expected_max_annual_sharpe": 0.6725520538434906,
+        "deflated_sharpe_probability": 0.976214913493928,
+        "adf_return_stationarity": "not computed: statsmodels is unavailable; daily strategy returns, not price levels, are evaluated"
+      },
+      "baseline_recross_audit": {
+        "baseline_recross_entries": 5,
+        "passed_filter": 0,
+        "vetoed_by_filter": 5,
+        "decisions": [
+          {
+            "signal_date": "2003-01-09T00:00:00",
+            "entry_date": "2003-01-10T00:00:00",
+            "buy_probability": null,
+            "filter_passed": false
+          },
+          {
+            "signal_date": "2004-03-24T00:00:00",
+            "entry_date": "2004-03-25T00:00:00",
+            "buy_probability": 0.4258898907681082,
+            "filter_passed": false
+          },
+          {
+            "signal_date": "2005-03-30T00:00:00",
+            "entry_date": "2005-03-31T00:00:00",
+            "buy_probability": 0.046095642436670387,
+            "filter_passed": false
+          },
+          {
+            "signal_date": "2018-10-12T00:00:00",
+            "entry_date": "2018-10-15T00:00:00",
+            "buy_probability": 0.3229394458589309,
+            "filter_passed": false
+          },
+          {
+            "signal_date": "2023-01-26T00:00:00",
+            "entry_date": "2023-01-27T00:00:00",
+            "buy_probability": 0.4001261197071538,
+            "filter_passed": false
+          }
+        ]
+      },
+      "challenger_entry_audit": {
+        "entries": 14,
+        "recross_filter_violations": 0,
+        "outcomes": [
+          {
+            "signal_date": "2002-07-23T00:00:00",
+            "entry_date": "2002-07-24T00:00:00",
+            "buy_trigger": "VIX+MA200",
+            "buy_probability": null,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2002-10-09T00:00:00",
+            "entry_date": "2002-10-10T00:00:00",
+            "buy_trigger": "VIX+MA200",
+            "buy_probability": null,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2008-01-22T00:00:00",
+            "entry_date": "2008-01-23T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.41719151391197445,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2008-10-16T00:00:00",
+            "entry_date": "2008-10-17T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.4802544746480689,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2008-11-21T00:00:00",
+            "entry_date": "2008-11-24T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.4661753276561239,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2009-01-30T00:00:00",
+            "entry_date": "2009-02-02T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.6721094836622108,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2009-03-06T00:00:00",
+            "entry_date": "2009-03-09T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.6490645510684996,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2011-10-05T00:00:00",
+            "entry_date": "2011-10-06T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.42272725764161717,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2015-08-24T00:00:00",
+            "entry_date": "2015-08-25T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.6398668320317116,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2018-12-21T00:00:00",
+            "entry_date": "2018-12-24T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.40614473274847096,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2020-03-13T00:00:00",
+            "entry_date": "2020-03-16T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.438105017638742,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2022-06-13T00:00:00",
+            "entry_date": "2022-06-14T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.42946980511097316,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2023-10-27T00:00:00",
+            "entry_date": "2023-10-30T00:00:00",
+            "buy_trigger": "MA200",
+            "buy_probability": 0.6707704721390891,
+            "recross_filter_passed": null
+          },
+          {
+            "signal_date": "2025-04-04T00:00:00",
+            "entry_date": "2025-04-07T00:00:00",
+            "buy_trigger": "VIX",
+            "buy_probability": 0.39684022124810836,
+            "recross_filter_passed": null
+          }
+        ]
+      },
+      "period_deltas_vs_baseline": {
+        "early_period": {
+          "cagr": -0.034164470255461765,
+          "sharpe": -0.09308638595837593,
+          "max_drawdown": -3.358968068278845e-05
+        },
+        "late_period": {
+          "cagr": 0.007566109920995823,
+          "sharpe": 0.08067267543078938,
+          "max_drawdown": 0.007496105962457755
+        },
+        "real_breadth_period": {
+          "cagr": -0.0028514864006445872,
+          "sharpe": 0.018227675561607093,
+          "max_drawdown": -3.358968068278845e-05
+        }
+      }
+    }
+  },
+  "cost_stress": {
+    "1": {
+      "baseline_cagr": 0.20177874222989312,
+      "challenger_cagr": 0.19263547528771774,
+      "challenger_minus_baseline_cagr": -0.009143266942175376
+    },
+    "2": {
+      "baseline_cagr": 0.2008306988171722,
+      "challenger_cagr": 0.19184812055488476,
+      "challenger_minus_baseline_cagr": -0.008982578262287433
+    },
+    "5": {
+      "baseline_cagr": 0.19798645443159502,
+      "challenger_cagr": 0.18948594495597892,
+      "challenger_minus_baseline_cagr": -0.008500509475616091
+    },
+    "10": {
+      "baseline_cagr": 0.19324506834387045,
+      "challenger_cagr": 0.18554827422526676,
+      "challenger_minus_baseline_cagr": -0.007696794118603689
+    }
+  },
+  "current": {
+    "date": "2026-07-30T00:00:00",
+    "buy_probability": 0.4488281431229088,
+    "raw_ma200_recross": false,
+    "primary_filter_pass": false,
+    "filtered_ma200_recross": false
+  },
+  "bias_audit": {
+    "lookahead": "Absent by construction: a label becomes eligible only after its complete 126-session path is historical; close signals fill at the next-session open.",
+    "survivorship": "Cannot fully verify constituent history because aggregate index and breadth series are used.",
+    "data_snooping": "Present as a material research risk: 570 related prior vector configurations are counted for multiplicity.",
+    "transaction_costs": "Included and stressed at 1x/2x/5x/10x.",
+    "liquidity": "Low concern for QQQ at modeled size; ADV participation is not explicitly modeled.",
+    "frequency_alignment": "Daily close probability and next-session-open fills align.",
+    "synthetic_breadth": "Present before 2007; 2007+ results reported separately.",
+    "clean_forward_oos": "Insufficient: observations after 2026-07-05 were already viewed during this research round and there are too few completed post-freeze trades."
+  },
+  "artifacts": {
+    "results_json": "/Users/wongkaho/Downloads/spy500_history/qqq_vector_recross_filter_results.json",
+    "signals_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_vector_recross_filter_signals.csv",
+    "equity_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_vector_recross_filter_equity.csv",
+    "trades_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_vector_recross_filter_trades.csv"
+  }
+}

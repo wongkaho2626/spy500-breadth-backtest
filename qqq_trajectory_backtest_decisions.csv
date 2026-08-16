@@ -1,0 +1,9 @@
+entry_date,decision_date,decision_fill_date,scheduled_rotation_date,extended_to_80,force_extension,trajectory_lookback,decision_ndx_above_ma200,decision_breadth,decision_past_breadth,decision_breadth_change,decision_requires_ma200,natural_extension_gate
+2008-01-23,2008-04-17,2008-04-18,2008-05-16,True,,20,False,38.01,21.18,16.83,False,True
+2009-03-09,2009-06-02,2009-06-03,2009-07-01,True,,20,True,60.28,40.73,19.550000000000004,False,True
+2011-10-06,2011-12-30,2012-01-03,2012-02-01,True,,20,False,46.58,40.68,5.899999999999999,False,True
+2015-08-25,2015-11-17,2015-11-18,2015-11-18,False,,20,True,39.68,40.39,-0.7100000000000009,False,False
+2020-03-16,2020-06-09,2020-06-10,2020-07-09,True,,20,True,54.25,28.91,25.34,False,True
+2022-06-14,2022-09-08,2022-09-09,2022-09-09,False,,20,False,33.99,39.76,-5.769999999999996,False,False
+2023-10-30,2024-01-25,2024-01-26,2024-01-26,False,,20,True,70.37,74.75,-4.3799999999999955,False,False
+2025-04-07,2025-07-02,2025-07-03,2025-08-01,True,,20,True,58.92,48.8,10.120000000000005,False,True

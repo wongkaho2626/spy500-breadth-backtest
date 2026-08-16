@@ -1,0 +1,194 @@
+{
+  "decision": "reject",
+  "hypothesis": "The sell-only 3D vector predicts post-exit economic outcomes better than expanding historical naive forecasts.",
+  "method": {
+    "features": [
+      "sell_ndx_return_60_pct",
+      "sell_breadth_fall_60_points",
+      "sell_breadth_level_pct"
+    ],
+    "horizons_sessions": [
+      20,
+      60
+    ],
+    "neighbors": 3,
+    "minimum_training_events": 4,
+    "weighting": "1 / (robust-scaled Euclidean distance + 0.25)",
+    "training_rule": "expanding causal; prior event admitted only after its full 60-session label window ended",
+    "naive_continuous": "expanding historical median",
+    "naive_binary": "expanding historical base rate",
+    "round_trip_slippage": 0.001,
+    "cash_yield": 0.0,
+    "new_tuned_parameters": 0
+  },
+  "data": {
+    "start": "2002-01-02T00:00:00",
+    "end": "2026-07-30T00:00:00",
+    "canonical_exits": 17,
+    "events_with_complete_3d_and_targets": 17,
+    "causal_predictions": 13,
+    "exit_reason_counts": {
+      "bearish-divergence": 9,
+      "climax-top": 7,
+      "trailing-stop": 1
+    },
+    "clean_forward_oos_start": "2026-07-05",
+    "clean_forward_completed_exits": 0
+  },
+  "primary_target": {
+    "name": "future_min_ndx_return_60",
+    "observations": 13,
+    "model_mae": 0.07376076004848285,
+    "naive_mae": 0.07387803400163563,
+    "mae_improvement_pct": 0.1587399485348806,
+    "spearman_correlation": 0.049450549450549455,
+    "model_beats_naive": true
+  },
+  "primary_early_late_stability": {
+    "early_through_2013": {
+      "observations": 6,
+      "model_mae": 0.0781868927952358,
+      "naive_mae": 0.08408529845469415,
+      "mae_improvement_pct": 7.014788277925243,
+      "spearman_correlation": 0.08571428571428573,
+      "model_beats_naive": true
+    },
+    "late_from_2014": {
+      "observations": 7,
+      "model_mae": 0.06996693197983747,
+      "naive_mae": 0.06512895018472832,
+      "mae_improvement_pct": -7.428312265723536,
+      "spearman_correlation": -0.4642857142857144,
+      "model_beats_naive": false
+    }
+  },
+  "continuous_targets": {
+    "future_min_ndx_return_60": {
+      "observations": 13,
+      "model_mae": 0.07376076004848285,
+      "naive_mae": 0.07387803400163563,
+      "mae_improvement_pct": 0.1587399485348806,
+      "spearman_correlation": 0.049450549450549455,
+      "model_beats_naive": true
+    },
+    "risk_adjusted_return_20": {
+      "observations": 13,
+      "model_mae": 0.9618119420754733,
+      "naive_mae": 0.7757285656639201,
+      "mae_improvement_pct": -23.98820729932649,
+      "spearman_correlation": -0.22527472527472525,
+      "model_beats_naive": false
+    },
+    "risk_adjusted_return_60": {
+      "observations": 13,
+      "model_mae": 0.8911054416365543,
+      "naive_mae": 0.7690376115741936,
+      "mae_improvement_pct": -15.872803647729539,
+      "spearman_correlation": -0.5,
+      "model_beats_naive": false
+    },
+    "cash_advantage_20": {
+      "observations": 13,
+      "model_mae": 0.08976155666365077,
+      "naive_mae": 0.06772705126725595,
+      "mae_improvement_pct": -32.53427542481515,
+      "spearman_correlation": -0.34065934065934067,
+      "model_beats_naive": false
+    },
+    "cash_advantage_60": {
+      "observations": 13,
+      "model_mae": 0.129858978452338,
+      "naive_mae": 0.10531841360406022,
+      "mae_improvement_pct": -23.30130506953598,
+      "spearman_correlation": -0.5989010989010989,
+      "model_beats_naive": false
+    },
+    "oracle_reentry_delay_60": {
+      "observations": 13,
+      "model_mae": 20.645021851902623,
+      "naive_mae": 20.423076923076923,
+      "mae_improvement_pct": -1.086735998016608,
+      "spearman_correlation": -0.2747252747252747,
+      "model_beats_naive": false
+    }
+  },
+  "cash_vs_hold_targets": {
+    "cash_wins_20": {
+      "observations": 13,
+      "observed_rate": 0.5384615384615384,
+      "model_brier": 0.32819681049534777,
+      "naive_brier": 0.27981106162042213,
+      "brier_improvement_pct": -17.292293090458077,
+      "model_accuracy_at_50pct": 0.5384615384615384,
+      "naive_accuracy_at_50pct": 0.5384615384615384,
+      "model_beats_naive": false
+    },
+    "cash_wins_60": {
+      "observations": 13,
+      "observed_rate": 0.3076923076923077,
+      "model_brier": 0.4603343079156439,
+      "naive_brier": 0.2567701780661457,
+      "brier_improvement_pct": -79.27872753083447,
+      "model_accuracy_at_50pct": 0.3076923076923077,
+      "naive_accuracy_at_50pct": 0.46153846153846156,
+      "model_beats_naive": false
+    }
+  },
+  "secondary_targets_beating_naive": 0,
+  "secondary_targets_total": 7,
+  "decision_reason": "Reject: the 0.16% full-sample primary MAE improvement reverses from +7.01% in the early period to -7.43% from 2014 onward, and none of seven secondary targets beats its naive benchmark.",
+  "current": {
+    "date": "2026-07-30T00:00:00",
+    "vector": {
+      "sell_ndx_return_60_pct": 1.643761604118632,
+      "sell_breadth_fall_60_points": -14.939999999999998,
+      "sell_breadth_level_pct": 68.41
+    },
+    "canonical_sell_state": {
+      "position": "IN",
+      "bearish_divergence_active": false,
+      "climax_top_active": false,
+      "trailing_stop_active": false,
+      "canonical_sell_reason": null,
+      "macd_cross_age_sessions": 38,
+      "extension_age_sessions": 71,
+      "drawdown_from_trade_high_pct": -8.33072412151099
+    },
+    "counterfactual_if_sold_now": {
+      "neighbors": [
+        "2003-03-17T00:00:00",
+        "2022-11-11T00:00:00",
+        "2002-11-11T00:00:00"
+      ],
+      "distances": [
+        0.9055986824147417,
+        1.3451141097853208,
+        2.0822292258352
+      ],
+      "forecasts": {
+        "future_min_ndx_return_60": -0.058680502564777165,
+        "risk_adjusted_return_20": -0.05305270856263025,
+        "risk_adjusted_return_60": 0.627915744119217,
+        "cash_advantage_20": -0.0005906429165601686,
+        "cash_advantage_60": -0.0774701927406768,
+        "oracle_reentry_delay_60": 27.013107308664107,
+        "cash_wins_20": 0.7768010616075295,
+        "cash_wins_60": 0.22319893839247038
+      },
+      "warning": "Counterfactual only: no canonical sell signal is active, and the model must pass causal validation before use."
+    }
+  },
+  "limitations": [
+    "Only 17 canonical exits are sampled and just 13 produce causal predictions after the minimum training period.",
+    "The three-dimensional vector omits climax, trailing-stop, entry, trade-high and cooldown state.",
+    "Cash-vs-hold subtracts fixed round-trip slippage but not dollar commission or cash yield.",
+    "Oracle re-entry delay is the hindsight trough within 60 sessions and is only a supervised target.",
+    "There are no completed clean forward-OOS exits after the 2026-07-05 freeze.",
+    "Counterfactual current forecasts are not actionable when no sell signal is active."
+  ],
+  "artifacts": {
+    "result_json": "/Users/wongkaho/Downloads/spy500_history/qqq_sell_3d_economic_targets_results.json",
+    "event_targets_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_sell_3d_economic_target_events.csv",
+    "causal_predictions_csv": "/Users/wongkaho/Downloads/spy500_history/qqq_sell_3d_economic_predictions.csv"
+  }
+}
