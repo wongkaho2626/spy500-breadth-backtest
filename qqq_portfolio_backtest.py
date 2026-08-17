@@ -47,6 +47,8 @@ BREADTH_DAILY_MIN  = "2007-01-01"  # fallback cutoff when daily file is absent
 VIX_FILE          = DATA_DIR / "VIX.csv"
 TOP_HOLDINGS_FILE = DATA_DIR / "NASDAQ100" / "nasdaq100_top10_holdings.csv"
 STOCK_PRICE_DIR   = DATA_DIR / "NASDAQ100" / "stock_prices"
+SPY_TOP_HOLDINGS_FILE = DATA_DIR / "SPY" / "stock_prices" / "spy_top_holdings.csv"
+SPY_STOCK_PRICE_DIR   = DATA_DIR / "SPY" / "stock_prices" / "prices"
 
 # ── Portfolio weights ─────────────────────────────────────────────────────────
 QQQ_WEIGHT   = 0.60
@@ -151,7 +153,12 @@ def _name_to_ticker(name: str) -> str | None:
 
 
 def load_top_holdings() -> dict[int, str]:
-    """Return {year: ticker} for the #1 NDX holding each year."""
+    """Return annual Top-1 tickers, preferring NDX and falling back to SPY.
+
+    SPY fallback rows are based on the latest holdings report dated before the
+    start of each calendar year. ``setdefault`` guarantees that an available
+    NASDAQ-100 holding always takes precedence.
+    """
     df = pd.read_csv(TOP_HOLDINGS_FILE)
     result: dict[int, str] = {}
     for _, row in df.iterrows():
@@ -159,13 +166,22 @@ def load_top_holdings() -> dict[int, str]:
             ticker = _name_to_ticker(str(row["Holding"]))
             if ticker:
                 result[int(row["Year"])] = ticker
+    if SPY_TOP_HOLDINGS_FILE.exists():
+        spy = pd.read_csv(SPY_TOP_HOLDINGS_FILE)
+        for _, row in spy.iterrows():
+            ticker = str(row["Ticker"]).strip()
+            if ticker:
+                result.setdefault(int(row["Year"]), ticker)
     return result
 
 
 def _load_stock_series(ticker: str, col: str = "Close") -> pd.Series | None:
     path = STOCK_PRICE_DIR / f"{ticker}.csv"
-    if not path.exists():
-        return None
+    from_spy = not path.exists()
+    if from_spy:
+        path = SPY_STOCK_PRICE_DIR / f"{ticker}.csv"
+        if not path.exists():
+            return None
     df = pd.read_csv(path)
     # Stock CSVs from yfinance may have mixed tz-aware/naive date strings;
     # parse with utc=True then strip tz so the index stays tz-naive.
@@ -173,8 +189,16 @@ def _load_stock_series(ticker: str, col: str = "Close") -> pd.Series | None:
                   .dt.tz_localize(None))
     df.set_index("Date", inplace=True)
     df.sort_index(inplace=True)
-    use = col if col in df.columns else "Close"
-    return df[use].rename(ticker).astype(float)
+    if from_spy and "Adj Close" in df.columns and "Close" in df.columns:
+        adjustment = df["Adj Close"].astype(float) / df["Close"].astype(float)
+        if col == "Open" and "Open" in df.columns:
+            series = df["Open"].astype(float) * adjustment
+        else:
+            series = df["Adj Close"].astype(float)
+    else:
+        use = col if col in df.columns else "Close"
+        series = df[use].astype(float)
+    return series.rename(ticker)
 
 
 def _load_etf(ticker: str, start: str = "1993-01-01", col: str = "Close") -> pd.Series | None:
@@ -589,11 +613,21 @@ def run_strategy(
                     + ("MA200" if _mv[i] else "")
                 )
                 # Bucket-level entry/peak/low values
-                qqq_entry_val  = qqq_bucket;  qqq_peak_val  = qqq_bucket;  qqq_low_val  = qqq_bucket
-                stock_entry_val = stock_bucket; stock_peak_val = stock_bucket; stock_low_val = stock_bucket
-                tqqq_entry_val = tqqq_bucket; tqqq_peak_val = tqqq_bucket; tqqq_low_val = tqqq_bucket
-                spy_entry_val  = spy_bucket;  spy_peak_val  = spy_bucket;  spy_low_val  = spy_bucket
-                soxx_entry_val = soxx_bucket; soxx_peak_val = soxx_bucket; soxx_low_val = soxx_bucket
+                qqq_entry_val = qqq_bucket
+                qqq_peak_val = qqq_bucket
+                qqq_low_val = qqq_bucket
+                stock_entry_val = stock_bucket
+                stock_peak_val = stock_bucket
+                stock_low_val = stock_bucket
+                tqqq_entry_val = tqqq_bucket
+                tqqq_peak_val = tqqq_bucket
+                tqqq_low_val = tqqq_bucket
+                spy_entry_val = spy_bucket
+                spy_peak_val = spy_bucket
+                spy_low_val = spy_bucket
+                soxx_entry_val = soxx_bucket
+                soxx_peak_val = soxx_bucket
+                soxx_low_val = soxx_bucket
 
         elif position == "IN":
             ndx_high = max(ndx_high, ndx_sig)
@@ -639,8 +673,10 @@ def run_strategy(
                 soxx_bucket  = (gross_qqq * soxx_qqq_frac  + gross_soxx)           * (1 - comm_frac)
                 total_proc   = qqq_bucket + stock_bucket + tqqq_bucket + spy_bucket + soxx_bucket
 
-                qqq_exit_val  = qqq_bucket;  stock_exit_val = stock_bucket
-                tqqq_exit_val = tqqq_bucket; spy_exit_val   = spy_bucket
+                qqq_exit_val = qqq_bucket
+                stock_exit_val = stock_bucket
+                tqqq_exit_val = tqqq_bucket
+                spy_exit_val = spy_bucket
                 soxx_exit_val = soxx_bucket
 
                 entry_val  = qqq_entry_val + stock_entry_val + tqqq_entry_val + spy_entry_val + soxx_entry_val

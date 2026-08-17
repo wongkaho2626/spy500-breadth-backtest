@@ -4,7 +4,8 @@ Rolling-window DCA analysis: QQQ 70% / NDX Top-1 Stock 30%.
 Reuses the exact breadth-driven buy/sell signal from qqq_portfolio_backtest.py
 (which loads breadth via breadth_daily.csv — the continuous daily series built
 by build_breadth_daily.py from S5TH + MMTH). Only the QQQ (NDX proxy) and
-NDX Top-1 stock buckets are active.
+NDX Top-1 stock buckets are active. If an annual NDX Top-1 holding is missing,
+the latest prior-year SPY Top-1 holding is used before falling back to cash.
 
 For each horizon of 1..20 years: $1,000,000 initial capital, plus $200,000
 contributed at every subsequent 252-trading-day "anniversary" of the window's
@@ -21,8 +22,12 @@ open (FILL_PRICE="open") or close. Mark-to-market always uses closes.
 The inner loop runs on plain numpy arrays (not DataFrame rows) because the
 full sweep touches ~80M window-days.
 
-Output: qqq70stock30_dca_rolling.csv
+Outputs:
+  - qqq70stock30_dca_rolling.csv: original daily-step descriptive results.
+  - qqq70stock30_dca_nonoverlap.csv: canonical non-overlapping cohorts.
+  - qqq70stock30_dca_overlap_diagnostics.csv: overlap-aware inference.
 """
+import math
 from pathlib import Path
 
 import numpy as np
@@ -37,7 +42,11 @@ YEAR_ROWS       = 252
 HORIZONS        = range(1, 21)
 INITIAL_CAPITAL = 1_000_000.0
 CONTRIBUTION    = 200_000.0
-OUT_FILE        = Path(__file__).parent / "qqq70stock30_dca_rolling.csv"
+OUT_FILE          = Path(__file__).parent / "qqq70stock30_dca_rolling.csv"
+NONOVERLAP_FILE   = Path(__file__).parent / "qqq70stock30_dca_nonoverlap.csv"
+DIAGNOSTICS_FILE  = Path(__file__).parent / "qqq70stock30_dca_overlap_diagnostics.csv"
+BOOTSTRAP_SAMPLES = 2_000
+RANDOM_SEED       = 20_260_817
 
 # ── Execution timing ──────────────────────────────────────────────────────────
 # Signals come from end-of-day NDX closes; the earliest tradeable fill is the NEXT
@@ -234,6 +243,72 @@ def run_buyhold(price: np.ndarray, s: int, e: int, n_contributions: int) -> floa
     return shares * price[e - 1]
 
 
+def newey_west_mean_stats(values: np.ndarray, max_lag: int) -> dict[str, float]:
+    """Estimate mean uncertainty with Bartlett-kernel Newey-West errors.
+
+    FFT autocovariances keep the calculation practical when the overlap lag is
+    several thousand sessions. The returned effective sample size is only a
+    dependence-adjusted diagnostic, not a literal count of independent windows.
+    """
+    x = np.asarray(values, dtype=float)
+    n = len(x)
+    lag = min(max_lag, n - 1)
+    centered = x - x.mean()
+
+    nfft = 1 << (2 * n - 1).bit_length()
+    spectrum = np.fft.rfft(centered, n=nfft)
+    autocov = np.fft.irfft(spectrum * np.conjugate(spectrum), n=nfft)[:lag + 1] / n
+    if lag:
+        weights = 1 - np.arange(1, lag + 1) / (lag + 1)
+        long_run_variance = autocov[0] + 2 * float(np.dot(weights, autocov[1:]))
+    else:
+        long_run_variance = float(autocov[0])
+    long_run_variance = max(float(long_run_variance), 0.0)
+
+    mean = float(x.mean())
+    standard_error = math.sqrt(long_run_variance / n)
+    if standard_error > 0:
+        z_stat = mean / standard_error
+        p_value = math.erfc(abs(z_stat) / math.sqrt(2))
+        sample_variance = float(np.var(x, ddof=1)) if n > 1 else 0.0
+        effective_n = min(float(n), max(1.0, sample_variance / standard_error**2))
+    else:
+        z_stat = math.nan
+        p_value = math.nan
+        effective_n = float(n)
+
+    return {
+        "lag": lag,
+        "mean": mean,
+        "standard_error": standard_error,
+        "ci_low": mean - 1.96 * standard_error,
+        "ci_high": mean + 1.96 * standard_error,
+        "z_stat": z_stat,
+        "p_value": p_value,
+        "effective_n": effective_n,
+    }
+
+
+def bootstrap_mean_ci(values: np.ndarray, seed: int) -> tuple[float, float]:
+    """Bootstrap the mean of already non-overlapping cohorts."""
+    x = np.asarray(values, dtype=float)
+    if len(x) < 3:
+        return math.nan, math.nan
+    rng = np.random.default_rng(seed)
+    indices = rng.integers(0, len(x), size=(BOOTSTRAP_SAMPLES, len(x)))
+    means = x[indices].mean(axis=1)
+    low, high = np.percentile(means, [2.5, 97.5])
+    return float(low), float(high)
+
+
+def inference_quality(n_nonoverlap: int) -> str:
+    if n_nonoverlap >= 20:
+        return "moderate"
+    if n_nonoverlap >= 3:
+        return "exploratory"
+    return "insufficient (<3 non-overlap windows)"
+
+
 def main() -> None:
     print("Loading data (breadth via breadth_daily.csv)...")
     merged, top_holdings, aligned_stocks, _tqqq, _spy, _soxx = qpb.load_data()
@@ -245,6 +320,8 @@ def main() -> None:
     price = A["price"]
 
     rows_out = []
+    nonoverlap_rows = []
+    diagnostic_rows = []
     for Y in HORIZONS:
         win_len   = YEAR_ROWS * Y
         n_windows = L - win_len + 1
@@ -262,6 +339,50 @@ def main() -> None:
 
         strat_ret = (strat_finals - deployed) / deployed * 100
         bh_ret    = (bh_finals - deployed) / deployed * 100
+        excess_ret = strat_ret - bh_ret
+
+        # Offset zero is the canonical cohort. Each selected window begins only
+        # after the prior selected horizon has ended, so these observations do
+        # not reuse market sessions within a horizon.
+        nonoverlap_idx = np.arange(0, n_windows, win_len)
+        nonoverlap_excess = excess_ret[nonoverlap_idx]
+        for window_id, w in enumerate(nonoverlap_idx, start=1):
+            nonoverlap_rows.append({
+                "years": Y,
+                "window_id": window_id,
+                "start_date": pd.Timestamp(A["dates"][w]).date(),
+                "end_date": pd.Timestamp(A["dates"][w + win_len - 1]).date(),
+                "deployed_usd": int(deployed),
+                "strategy_final_usd": round(strat_finals[w]),
+                "strategy_return_pct": round(strat_ret[w], 4),
+                "ndx_buyhold_final_usd": round(bh_finals[w]),
+                "ndx_buyhold_return_pct": round(bh_ret[w], 4),
+                "excess_return_pp": round(excess_ret[w], 4),
+            })
+
+        nw = newey_west_mean_stats(excess_ret, win_len - 1)
+        bootstrap_low, bootstrap_high = bootstrap_mean_ci(
+            nonoverlap_excess, RANDOM_SEED + Y
+        )
+        diagnostic_rows.append({
+            "years": Y,
+            "raw_window_count": n_windows,
+            "nonoverlap_window_count": len(nonoverlap_idx),
+            "structural_effective_n": round(n_windows / win_len, 4),
+            "newey_west_effective_n": round(nw["effective_n"], 4),
+            "overlap_ratio_pct": round((1 - len(nonoverlap_idx) / n_windows) * 100, 4),
+            "newey_west_lag": nw["lag"],
+            "excess_mean_pp": round(nw["mean"], 4),
+            "newey_west_se_pp": round(nw["standard_error"], 4),
+            "newey_west_ci_low_pp": round(nw["ci_low"], 4),
+            "newey_west_ci_high_pp": round(nw["ci_high"], 4),
+            "newey_west_z_stat": round(nw["z_stat"], 4),
+            "newey_west_p_value": round(nw["p_value"], 6),
+            "nonoverlap_excess_mean_pp": round(float(nonoverlap_excess.mean()), 4),
+            "nonoverlap_bootstrap_ci_low_pp": round(bootstrap_low, 4),
+            "nonoverlap_bootstrap_ci_high_pp": round(bootstrap_high, 4),
+            "inference_quality": inference_quality(len(nonoverlap_idx)),
+        })
 
         rows_out.append({
             "years": Y,
@@ -287,7 +408,13 @@ def main() -> None:
 
     out = pd.DataFrame(rows_out)
     out.to_csv(OUT_FILE, index=False)
+    nonoverlap_out = pd.DataFrame(nonoverlap_rows)
+    nonoverlap_out.to_csv(NONOVERLAP_FILE, index=False)
+    diagnostics_out = pd.DataFrame(diagnostic_rows)
+    diagnostics_out.to_csv(DIAGNOSTICS_FILE, index=False)
     print(f"\nWrote {len(out)} rows -> {OUT_FILE.name}")
+    print(f"Wrote {len(nonoverlap_out)} rows -> {NONOVERLAP_FILE.name}")
+    print(f"Wrote {len(diagnostics_out)} rows -> {DIAGNOSTICS_FILE.name}")
 
 
 if __name__ == "__main__":

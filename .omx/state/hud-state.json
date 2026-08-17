@@ -1,5 +1,5 @@
 {
-  "last_turn_at": "2026-08-16T23:32:24.020Z",
-  "turn_count": 52,
-  "last_agent_output": "## Backtest Verification Report\n\n### Backtest Score：20 / 100 — Reject\n\n全期原始證據分係 `72/100`，但按照 `backte"
+  "last_turn_at": "2026-08-17T00:38:18.872Z",
+  "turn_count": 57,
+  "last_agent_output": "已完成更新及重跑。NASDAQ‑100 Top‑1 缯失時，依家會依序：\n\n`NASDAQ Top‑1 → SPY Top‑1 → cash`\n\nSPY fallback：\n\n- 1996–1998："
 }

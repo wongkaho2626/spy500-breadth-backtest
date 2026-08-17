@@ -595,7 +595,7 @@ def main() -> None:
     print(f"Buy signal  : breadth200 < {BUY_B200_THRESH}%  (washout entry)")
     print(f"Vote gate   : VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW}  (≥1 of 2 must agree)")
     print(f"           OR trend re-entry: price re-crosses above MA{MA200_WINDOW} after a climax-top exit")
-    print(f"              or when it re-crosses back above the prior exit price")
+    print("              or when it re-crosses back above the prior exit price")
     print(f"Sell signal : price rose ≥{DIVERGENCE_PRICE_RISE}% AND breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts")
     print(f"              over {DIVERGENCE_WINDOW} days, while breadth200 < {DIVERGENCE_BREADTH_CAP}%")
     print(f"           OR climax top: ≥{EXT10_PCT:.0f}% above 10d MA + MACD bearish cross "
