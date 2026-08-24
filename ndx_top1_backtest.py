@@ -1,16 +1,10 @@
-"""
-NDX Top-1 Breadth Strategy — buy the single #1 NDX holding each year.
+"""NDX Top-1 strategy traded on the exact QQQ strategy fill calendar.
 
-Same buy/sell/divergence signals as qqq_backtest.py, but on BUY we
-allocate 100% of capital to the current year's #1 NDX holding
-(from nasdaq100_top_holdings.csv).  Annual rebalancing at each year start
-during an open trade.  Compared against the plain QQQ index strategy.
-
-BUY  (while OUT): breadth200 < 26%
-                  AND at least 1 of 2 vote:
-                    • VIX > 30  (fear spike / panic bottom)
-                    • price > MA200  (uptrend pullback)
-SELL (while IN):  Bearish divergence (unchanged)
+QQQ determines every entry and exit date. On those dates the strategy trades
+the current year's #1 NDX holding from ``nasdaq100_top_holdings.csv`` and keeps
+the existing scheduled annual rebalance while a trade is open. Years before
+the holdings history begins are reported as unavailable rather than backfilled
+with future composition.
 """
 
 import numpy as np
@@ -18,6 +12,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from pathlib import Path
+
+import spy_backtest as qqq_calendar
 
 DATA_DIR      = Path(__file__).parent
 NDX_FILE      = DATA_DIR / "NASDAQ100.csv"
@@ -98,6 +94,57 @@ def _fmt_vol(vol: float) -> str:
     return f"{vol/1e3:.2f}K"
 
 
+def _fetch_window(
+    last_date: pd.Timestamp,
+    now: pd.Timestamp | None = None,
+) -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    """Return Yahoo's [start, end) window for completed US market days.
+
+    Yahoo treats ``end`` as exclusive.  Supplying it explicitly avoids an
+    invalid request around midnight in London, when the local calendar has
+    advanced but Yahoo is still on the previous New York date.
+    """
+    if now is None:
+        now = pd.Timestamp.now(tz="America/New_York")
+    elif now.tzinfo is None:
+        now = now.tz_localize("America/New_York")
+    else:
+        now = now.tz_convert("America/New_York")
+
+    market_day = now.normalize().tz_localize(None)
+    # Allow the current New York session only after prices have had time to
+    # settle at Yahoo.  Before 17:00 ET, the exclusive end is today.
+    end_exclusive = market_day + pd.Timedelta(days=int(now.hour >= 17))
+    start = pd.Timestamp(last_date).tz_localize(None).normalize() + pd.Timedelta(days=1)
+    if start >= end_exclusive:
+        return None
+    return start, end_exclusive
+
+
+def _read_stock_csv_for_update(path: Path) -> pd.DataFrame | None:
+    """Read a stock file, repairing the legacy 2-column/6-column mix safely."""
+    try:
+        return pd.read_csv(path, index_col=0)
+    except pd.errors.ParserError as exc:
+        header = pd.read_csv(path, nrows=0).columns.tolist()
+        if len(header) != 2 or header[0].strip().lower() != "date":
+            print(f"[fetch] WARNING: skipping malformed {path.name}: {exc}")
+            return None
+
+        # Older ETF files are Date,price.  A previous updater appended
+        # Date,Close,High,Low,Open,Volume rows.  Column 2 is Close in both
+        # layouts, so no price observations are discarded by this repair.
+        repaired = pd.read_csv(path, usecols=[0, 1], index_col=0)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        repaired.to_csv(tmp_path)
+        tmp_path.replace(path)
+        print(
+            f"[fetch] Repaired mixed-width {path.name}; "
+            f"kept {len(repaired)} Date/Close rows."
+        )
+        return repaired
+
+
 def _update_investing_csv(path: Path, yf_ticker: str, yf) -> None:
     """Append new rows (newest-first) to an Investing.com-style CSV."""
     df_ex = pd.read_csv(path)
@@ -105,14 +152,21 @@ def _update_investing_csv(path: Path, yf_ticker: str, yf) -> None:
         df_ex["Date"].astype(str).str.strip('"'), format="%m/%d/%Y"
     )
     last_date   = df_ex["_date"].max()
-    fetch_start = last_date + pd.Timedelta(days=1)
-    today       = pd.Timestamp.today().normalize()
-    if fetch_start > today:
+    window = _fetch_window(last_date)
+    if window is None:
         print(f"[fetch] {path.name} already up to date ({last_date.date()}).")
         return
+    fetch_start, fetch_end = window
 
-    print(f"[fetch] Fetching {yf_ticker} from {fetch_start.date()} …")
-    raw = yf.Ticker(yf_ticker).history(start=fetch_start, auto_adjust=True)
+    print(
+        f"[fetch] Fetching {yf_ticker} from {fetch_start.date()} "
+        f"through {(fetch_end - pd.Timedelta(days=1)).date()} …"
+    )
+    raw = yf.Ticker(yf_ticker).history(
+        start=fetch_start,
+        end=fetch_end,
+        auto_adjust=True,
+    )
     if raw.empty:
         print(f"[fetch] No new data for {yf_ticker}.")
         return
@@ -142,18 +196,37 @@ def _update_stock_price_csvs(yf) -> None:
         return
     for path in sorted(csvs):
         ticker = path.stem
-        df_ex = pd.read_csv(path, index_col=0)
-        idx   = pd.to_datetime(df_ex.index, format="mixed", utc=True)
-        last  = idx.max().normalize().replace(tzinfo=None)
-        start  = last + pd.Timedelta(days=1)
-        today  = pd.Timestamp.today().normalize()
-        if start > today:
+        df_ex = _read_stock_csv_for_update(path)
+        if df_ex is None or df_ex.empty:
             continue
-        raw = yf.Ticker(ticker).history(start=start, auto_adjust=True)
+        idx = pd.to_datetime(df_ex.index, format="mixed", utc=True, errors="coerce")
+        if idx.isna().all():
+            print(f"[fetch] WARNING: skipping {path.name}; it has no valid dates.")
+            continue
+        last  = idx.max().normalize().replace(tzinfo=None)
+        window = _fetch_window(last)
+        if window is None:
+            continue
+        start, end = window
+        raw = yf.Ticker(ticker).history(
+            start=start,
+            end=end,
+            auto_adjust=True,
+        )
         if raw.empty:
             continue
         raw.index = raw.index.normalize()
-        new_rows = raw[["Close", "High", "Low", "Open", "Volume"]].copy()
+        if len(df_ex.columns) == 1:
+            price_column = df_ex.columns[0]
+            new_rows = raw[["Close"]].rename(columns={"Close": price_column})
+        elif {"Close", "High", "Low", "Open", "Volume"}.issubset(df_ex.columns):
+            new_rows = raw[["Close", "High", "Low", "Open", "Volume"]].copy()
+        else:
+            print(
+                f"[fetch] WARNING: skipping {path.name}; unsupported columns "
+                f"{list(df_ex.columns)}."
+            )
+            continue
         new_rows.index.name = "Date"
         new_rows.to_csv(path, mode="a", header=False)
         print(f"[fetch] {ticker}.csv: added {len(new_rows)} row(s) → latest {new_rows.index.max().date()}.")
@@ -315,6 +388,56 @@ def basket_value(basket: dict[str, float], prices: dict[str, pd.Series], date: p
         if p is not None:
             total += shares * p
     return total
+
+
+def get_exact_price(
+    prices: dict[str, pd.Series], ticker: str, date: pd.Timestamp
+) -> float | None:
+    series = prices.get(ticker)
+    if series is None or date not in series.index or pd.isna(series.loc[date]):
+        return None
+    return float(series.loc[date])
+
+
+def composition_for_year(
+    holdings: dict[int, list[tuple[str, float]]], year: int
+) -> list[tuple[str, float]]:
+    if year in holdings:
+        return holdings[year]
+    prior_years = [available_year for available_year in holdings if available_year < year]
+    return holdings[max(prior_years)] if prior_years else []
+
+
+def build_exact_basket(
+    cash: float,
+    composition: list[tuple[str, float]],
+    prices: dict[str, pd.Series],
+    date: pd.Timestamp,
+) -> dict[str, float]:
+    exact = [(ticker, weight, get_exact_price(prices, ticker, date))
+             for ticker, weight in composition]
+    missing = [ticker for ticker, _, price in exact if price is None]
+    if missing:
+        raise ValueError(
+            f"missing exact fill price on {date.date()} for {', '.join(missing)}"
+        )
+    total_weight = sum(weight for _, weight, _ in exact)
+    return {
+        ticker: cash * (weight / total_weight) / (float(price) * (1 + SLIPPAGE))
+        for ticker, weight, price in exact
+    }
+
+
+def exact_basket_value(
+    basket: dict[str, float], prices: dict[str, pd.Series], date: pd.Timestamp
+) -> float:
+    value = 0.0
+    for ticker, shares in basket.items():
+        price = get_exact_price(prices, ticker, date)
+        if price is None:
+            raise ValueError(f"missing exact fill price on {date.date()} for {ticker}")
+        value += shares * price
+    return value
 
 
 # ── Strategy ──────────────────────────────────────────────────────────────────
@@ -484,6 +607,179 @@ def run_strategy(
         }
 
     return pd.Series(values, name="strategy"), trades, open_trade
+
+
+def load_exact_qqq_calendar() -> tuple[
+    pd.DataFrame, pd.Series, list[dict], dict | None
+]:
+    """Load the canonical QQQ engine used by qqq_backtest.py without import I/O."""
+    qqq_data = qqq_calendar.load_data(qqq_calendar.NDX_BENCHMARK_FILE)
+    equity, trades, open_trade = qqq_calendar.run_strategy(
+        qqq_data,
+        cooldown_days=qqq_calendar.COOLDOWN_DAYS,
+        execution_lag=qqq_calendar.EXECUTION_LAG,
+        fill_on=qqq_calendar.FILL_PRICE,
+    )
+    return qqq_data, equity, trades, open_trade
+
+
+def run_calendar_strategy(
+    df: pd.DataFrame,
+    holdings: dict[int, list[tuple[str, float]]],
+    prices: dict[str, pd.Series],
+    opens: dict[str, pd.Series],
+    source_trades: list[dict],
+    source_open_trade: dict | None,
+    *,
+    fill_on: str = FILL_PRICE,
+) -> tuple[pd.Series, list[dict], dict | None, dict]:
+    """Trade annual NDX Top-1 holdings on exact canonical QQQ fill dates."""
+    if fill_on not in {"open", "close"}:
+        raise ValueError("fill_on must be 'open' or 'close'")
+    fill_src = opens if fill_on == "open" else prices
+    events: dict[pd.Timestamp, tuple[str, dict]] = {}
+    skipped: list[dict] = []
+
+    def add_source_trade(source: dict, is_open: bool = False) -> None:
+        if not composition_for_year(holdings, source["entry_date"].year):
+            skipped.append(
+                {
+                    "entry_date": source["entry_date"],
+                    "exit_date": None if is_open else source["exit_date"],
+                    "reason": "holdings-history-unavailable",
+                }
+            )
+            return
+        events[source["entry_date"]] = ("BUY", source)
+        if not is_open:
+            events[source["exit_date"]] = ("SELL", source)
+
+    for source in source_trades:
+        add_source_trade(source)
+    if source_open_trade is not None:
+        add_source_trade(source_open_trade, is_open=True)
+
+    position = "OUT"
+    basket: dict[str, float] = {}
+    portfolio = INITIAL_CAPITAL
+    trade_start_value = original_entry_val = trade_min_val = 0.0
+    entry_date: pd.Timestamp | None = None
+    entry_holdings: list[str] = []
+    buy_trigger: str | None = None
+    values: dict[pd.Timestamp, float] = {}
+    trades: list[dict] = []
+    annual_rebalances: list[dict] = []
+    previous_year: int | None = None
+
+    for date, _ in df.iterrows():
+        year = date.year
+        event = events.get(date)
+
+        if (
+            position == "IN"
+            and previous_year is not None
+            and year != previous_year
+            and not (event is not None and event[0] == "SELL")
+        ):
+            new_composition = composition_for_year(holdings, year)
+            if new_composition:
+                current_value = exact_basket_value(basket, fill_src, date)
+                after_sell = current_value * (1 - SLIPPAGE) - COMMISSION
+                old_holdings = list(basket)
+                basket = build_exact_basket(
+                    after_sell, new_composition, fill_src, date
+                )
+                annual_rebalances.append(
+                    {
+                        "date": date,
+                        "from_holdings": old_holdings,
+                        "to_holdings": list(basket),
+                    }
+                )
+
+        previous_year = year
+
+        if event is not None:
+            action, source = event
+            if action == "BUY":
+                if position != "OUT":
+                    raise ValueError(f"QQQ calendar buys while invested on {date.date()}")
+                composition = composition_for_year(holdings, year)
+                trade_start_value = portfolio
+                basket = build_exact_basket(
+                    portfolio - COMMISSION, composition, fill_src, date
+                )
+                original_entry_val = exact_basket_value(basket, fill_src, date)
+                trade_min_val = original_entry_val
+                entry_date = date
+                entry_holdings = list(basket)
+                buy_trigger = source.get("buy_trigger")
+                portfolio = 0.0
+                position = "IN"
+            else:
+                if position != "IN" or entry_date is None:
+                    raise ValueError(f"QQQ calendar sells while out on {date.date()}")
+                exit_value = exact_basket_value(basket, fill_src, date)
+                portfolio = exit_value * (1 - SLIPPAGE) - COMMISSION
+                trade_return = portfolio / trade_start_value - 1
+                trades.append(
+                    {
+                        "entry_date": entry_date,
+                        "exit_date": date,
+                        "entry_basket_val": original_entry_val,
+                        "exit_basket_val": portfolio,
+                        "return_pct": trade_return * 100,
+                        "max_drawdown_pct": (
+                            (trade_min_val - original_entry_val)
+                            / original_entry_val
+                            * 100
+                        ),
+                        "accumulated": portfolio,
+                        "buy_trigger": buy_trigger,
+                        "sell_reason": source.get("sell_reason", "QQQ-calendar"),
+                        "entry_holdings": entry_holdings,
+                        "exit_holdings": list(basket),
+                    }
+                )
+                basket = {}
+                position = "OUT"
+
+        if position == "IN":
+            current_value = basket_value(basket, prices, date)
+            trade_min_val = min(trade_min_val, current_value)
+            values[date] = current_value
+        else:
+            values[date] = portfolio
+
+    open_trade = None
+    if position == "IN" and entry_date is not None:
+        last_date = df.index[-1]
+        last_value = basket_value(basket, prices, last_date)
+        effective_last = last_value * (1 - SLIPPAGE)
+        trade_min_val = min(trade_min_val, last_value)
+        open_trade = {
+            "entry_date": entry_date,
+            "entry_basket_val": original_entry_val,
+            "current_date": last_date,
+            "current_basket_val": last_value,
+            "return_pct": (effective_last / trade_start_value - 1) * 100,
+            "max_drawdown_pct": (
+                (trade_min_val - original_entry_val) / original_entry_val * 100
+            ),
+            "accumulated": effective_last,
+            "buy_trigger": buy_trigger,
+            "entry_holdings": entry_holdings,
+            "exit_holdings": list(basket),
+        }
+
+    audit = {
+        "source_completed_trades": len(source_trades),
+        "applied_completed_trades": len(trades),
+        "skipped_source_trades": skipped,
+        "annual_rebalances": annual_rebalances,
+        "maximum_exposure": 1.0 if trades or open_trade else 0.0,
+    }
+    return pd.Series(values, name="strategy"), trades, open_trade, audit
 
 
 def run_benchmark(df: pd.DataFrame) -> pd.Series:
@@ -760,7 +1056,6 @@ def compute_metrics_clipped(
     s = clip_and_normalize(series, start)
     clipped_trades = [t for t in trades if t["entry_date"] >= start]
     if open_trade and open_trade["entry_date"] >= start:
-        clipped_trades_with_open = clipped_trades  # open trade included in time-in-market
         n_open_days = (open_trade["current_date"] - open_trade["entry_date"]).days
     else:
         n_open_days = 0
@@ -865,16 +1160,34 @@ def main() -> None:
     prices = load_stock_prices(all_tickers)
     opens  = load_stock_prices(all_tickers, col="Open")
 
-    # ── Run strategies ────────────────────────────────────────────────────
-    h1                     = load_holdings(top_n=1)
-    strat1, trades1, open1 = run_strategy(df, h1, prices, opens)
-    qqq, trades_q, open_q  = run_qqq_strategy(df)
-    benchmark              = run_benchmark(df)
+    # ── Run exact QQQ calendar + Top-1 calendar follower ─────────────────
+    h1 = load_holdings(top_n=1)
+    qqq_data, qqq, trades_q, open_q = load_exact_qqq_calendar()
+    strat1, trades1, open1, calendar_audit = run_calendar_strategy(
+        df,
+        h1,
+        prices,
+        opens,
+        trades_q,
+        open_q,
+        fill_on=FILL_PRICE,
+    )
+    benchmark = run_benchmark(qqq_data)
 
     # ── Common start = first NDX Top-1 trade date ─────────────────────────
     common_start = strat1[strat1 != INITIAL_CAPITAL].index[0] if (strat1 != INITIAL_CAPITAL).any() else strat1.index[0]
     print(f"\nFull date range : {df.index[0].date()} → {df.index[-1].date()}")
     print(f"Common start    : {common_start.date()} (first trade)\n")
+    print(
+        "QQQ calendar    : "
+        f"{calendar_audit['applied_completed_trades']}/"
+        f"{calendar_audit['source_completed_trades']} completed trades applied; "
+        f"{len(calendar_audit['skipped_source_trades'])} skipped before holdings history"
+    )
+    print(
+        f"Annual switches : {len(calendar_audit['annual_rebalances'])}; "
+        f"max exposure {calendar_audit['maximum_exposure']:.0%}\n"
+    )
 
     mq = compute_metrics_clipped(qqq,       trades_q, open_q, common_start)
     m1 = compute_metrics_clipped(strat1,    trades1,  open1,  common_start)
