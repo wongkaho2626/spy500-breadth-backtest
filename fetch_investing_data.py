@@ -23,6 +23,7 @@ same breadth_daily.csv rebuild.
 from __future__ import annotations
 
 import io
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -66,6 +67,12 @@ BREADTH_LOOKBACK_DAYS = 400
 # Skip days where fewer than this many constituents have a valid 200-day MA
 # (guards against half-downloaded data producing a bogus percentage).
 MIN_VALID_CONSTITUENTS = 400
+# yfinance defaults to 2 * CPU count for a multi-symbol download.  On machines
+# with many cores that can exhaust resolver/curl resources and make valid
+# symbols look delisted.  Keep the initial download and its retry bounded.
+BREADTH_DOWNLOAD_THREADS = 4
+BREADTH_RETRY_THREADS = 2
+BREADTH_DOWNLOAD_TIMEOUT = 15
 
 
 def _read_existing(csv_file: Path) -> pd.DataFrame:
@@ -195,6 +202,70 @@ def _sp500_tickers() -> list[str]:
     return [s.replace(".", "-") for s in symbols]
 
 
+def _close_frame(data: pd.DataFrame | None, tickers: list[str]) -> pd.DataFrame:
+    """Return one Close column per downloaded ticker, regardless of yf shape."""
+    if data is None or data.empty:
+        return pd.DataFrame()
+
+    if isinstance(data.columns, pd.MultiIndex):
+        if "Close" not in data.columns.get_level_values(0):
+            return pd.DataFrame(index=data.index)
+        close = data["Close"]
+    elif "Close" in data.columns:
+        close = data["Close"]
+    else:
+        return pd.DataFrame(index=data.index)
+
+    if isinstance(close, pd.Series):
+        column = tickers[0] if len(tickers) == 1 else str(close.name)
+        close = close.rename(column).to_frame()
+    elif len(tickers) == 1 and len(close.columns) == 1:
+        close = close.rename(columns={close.columns[0]: tickers[0]})
+
+    close.columns = close.columns.map(str)
+    return close.sort_index()
+
+
+def _download_close_prices(
+    tickers: list[str], start: str, threads: int
+) -> pd.DataFrame:
+    """Download closes while replacing yfinance's noisy false-delisting log."""
+    if not tickers:
+        return pd.DataFrame()
+
+    # A scalar request gives yfinance's most reliable single-ticker path and
+    # makes a one-symbol retry explicit in tests and logs.
+    request: str | list[str] = tickers[0] if len(tickers) == 1 else tickers
+    yf_logger = logging.getLogger("yfinance")
+    old_level = yf_logger.level
+    try:
+        yf_logger.setLevel(logging.CRITICAL + 1)
+        data = yf.download(
+            request,
+            start=start,
+            auto_adjust=False,
+            progress=False,
+            threads=threads,
+            timeout=BREADTH_DOWNLOAD_TIMEOUT,
+        )
+    finally:
+        yf_logger.setLevel(old_level)
+    return _close_frame(data, tickers)
+
+
+def _merge_recovered_closes(
+    initial: pd.DataFrame, recovered: pd.DataFrame
+) -> pd.DataFrame:
+    """Fill failed initial histories with values obtained by a retry."""
+    combined = initial.copy()
+    for ticker in recovered.columns:
+        if ticker in combined.columns:
+            combined[ticker] = recovered[ticker].combine_first(combined[ticker])
+        else:
+            combined[ticker] = recovered[ticker]
+    return combined.sort_index()
+
+
 def _fetch_breadth_instrument(instrument: dict, verbose: bool) -> int:
     name = instrument["name"]
     csv_file = instrument["csv_file"]
@@ -222,16 +293,41 @@ def _fetch_breadth_instrument(instrument: dict, verbose: bool) -> int:
 
     start = (cutoff - pd.Timedelta(days=BREADTH_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
     try:
-        data = yf.download(tickers, start=start, auto_adjust=False,
-                           progress=False, threads=True)
+        close = _download_close_prices(tickers, start, BREADTH_DOWNLOAD_THREADS)
     except Exception as exc:
-        print(f"  {name}: yfinance download failed ({exc}), skipping")
-        return 0
-    if data is None or data.empty:
+        print(f"  {name}: initial yfinance download failed ({exc}); retrying")
+        close = pd.DataFrame()
+
+    missing = [
+        ticker
+        for ticker in tickers
+        if ticker not in close.columns or not close[ticker].notna().any()
+    ]
+    if missing:
+        try:
+            recovered = _download_close_prices(missing, start, BREADTH_RETRY_THREADS)
+            close = _merge_recovered_closes(close, recovered)
+        except Exception as exc:
+            print(f"  {name}: retry failed ({exc})")
+
+    unresolved = [
+        ticker
+        for ticker in tickers
+        if ticker not in close.columns or not close[ticker].notna().any()
+    ]
+    if unresolved:
+        sample = ", ".join(unresolved[:8])
+        suffix = ", ..." if len(unresolved) > 8 else ""
+        print(
+            f"  {name}: {len(unresolved)} of {len(tickers)} ticker histories "
+            f"unavailable after retry ({sample}{suffix})"
+        )
+
+    if close.empty:
         print(f"  {name}: yfinance returned no data, skipping")
         return 0
 
-    close = data["Close"].sort_index()
+    close = close.reindex(columns=tickers).sort_index()
     ma = close.rolling(MA_WINDOW, min_periods=MA_WINDOW).mean()
     valid = ma.notna() & close.notna()
     valid_counts = valid.sum(axis=1)
