@@ -1,0 +1,318 @@
+{
+  "methodology": {
+    "holding_rule": "Use September snapshot from year t only in calendar year t+1.",
+    "holding_corrections": {
+      "2016": "AAPL",
+      "2021": "AAPL",
+      "2023": "AAPL"
+    },
+    "execution": "Signal at close t, fill at open t+1; 5 bps baseline slippage.",
+    "rolling_use": "Descriptive only; non-overlap/HAC used for inference.",
+    "risk_period": "2007+ actual S5TH breadth source; no contributions."
+  },
+  "data_start": "1996-01-02",
+  "data_end": "2026-09-02",
+  "clean_2007_plus": {
+    "strategy_metrics": {
+      "start": "2007-01-03",
+      "end": "2026-09-02",
+      "sessions": 4948,
+      "years": 19.66324435318275,
+      "final_value_no_dca": 79061369.96768261,
+      "total_return": 78.45045804638704,
+      "cagr": 0.24919974511830256,
+      "annual_mean_return": 0.2437890375724754,
+      "annual_volatility": 0.20406914429190626,
+      "sharpe": 1.194639387636931,
+      "sortino": 1.7705004329684675,
+      "max_drawdown": -0.35543321607434997,
+      "calmar": 0.7011155228277107,
+      "ulcer_index": 0.07469459095347518,
+      "pain_ratio": 3.336248876086904,
+      "lake_ratio": 0.870250606305578,
+      "omega_zero": 1.2762626126137346,
+      "var_95": 0.0198576319352614,
+      "var_99": 0.035745940691057146,
+      "cvar_95": 0.030456164417214597,
+      "cvar_99": 0.04772061698238752
+    },
+    "benchmark_metrics": {
+      "start": "2007-01-03",
+      "end": "2026-09-02",
+      "sessions": 4948,
+      "years": 19.66324435318275,
+      "final_value_no_dca": 16552066.9330499,
+      "total_return": 15.552066933049897,
+      "cagr": 0.15341693576842075,
+      "annual_mean_return": 0.16871609946426203,
+      "annual_volatility": 0.2266754313128291,
+      "sharpe": 0.7443069523993588,
+      "sortino": 1.0592097671742546,
+      "max_drawdown": -0.5370615190845831,
+      "calmar": 0.2856598924270699,
+      "ulcer_index": 0.13197600583667424,
+      "pain_ratio": 1.1624608185087868,
+      "lake_ratio": 0.879749393694422,
+      "omega_zero": 1.1472092492663462,
+      "var_95": 0.023068364564080013,
+      "var_99": 0.040538692786995324,
+      "cvar_95": 0.0339835935791619,
+      "cvar_99": 0.05308790680650765
+    },
+    "statistical_tests": {
+      "observations": 4947,
+      "effective_observations_hac20": 4947.0,
+      "hac_t_stat_mean": 5.850782550986645,
+      "hac_p_value_mean": 4.892655347130596e-09,
+      "skewness": 0.0025297058017411185,
+      "excess_kurtosis": 11.34704446368153,
+      "jarque_bera_p": 0.0,
+      "ljung_box_p": {
+        "5": 7.66957542375228e-12,
+        "10": 4.1796248840472164e-14,
+        "20": 2.870412809040469e-13
+      },
+      "psr_vs_zero": 0.9999999213119745,
+      "dsr_4819_trials": 0.945127944512325,
+      "dsr_benchmark_annual_sharpe": 0.8302717396189795
+    },
+    "benchmark_regression": {
+      "annual_alpha_hac": 0.12260519879840183,
+      "alpha_hac_p_value": 4.123328417141755e-05,
+      "beta": 0.7182707468870988,
+      "correlation": 0.7978390457556163,
+      "tracking_error": 0.13861439047781834,
+      "information_ratio": 0.5415955576432511
+    },
+    "trade_statistics": {
+      "completed_trades": 13,
+      "win_rate": 0.8461538461538461,
+      "profit_factor": 39.62535446441739,
+      "expectancy": 0.4195754418471739,
+      "average_win": 0.5086996161831614,
+      "average_loss": -0.07060751700075736,
+      "payoff_ratio": 7.204609902621344,
+      "kelly_fraction": 0.8247999968926699
+    },
+    "open_trade_present": true
+  },
+  "robustness": {
+    "block_bootstrap": {
+      "samples": 2000,
+      "block_sessions": 20,
+      "warning": "In-sample stationary block bootstrap; not a calibrated forecast.",
+      "terminal_20y_percentiles": {
+        "5": 44668905.80035704,
+        "25": 95222157.94619915,
+        "50": 158910932.5537421,
+        "75": 264892632.84234703,
+        "95": 546862994.1450833
+      },
+      "cagr_20y_95_ci": [
+        0.1461591647242604,
+        0.35560718186833523
+      ],
+      "max_drawdown_20y_5_50_95": [
+        -0.41408952768728785,
+        -0.28818270967715504,
+        -0.20843561616099585
+      ],
+      "probability_terminal_at_least_80m_in_sample_model": 0.8215
+    },
+    "consistency": {
+      "positive_months": 0.5738396624472574,
+      "positive_quarters": 0.6835443037974683,
+      "rolling_252_sharpe_min": -1.4587574285602405,
+      "rolling_252_sharpe_median": 1.4486446849052126,
+      "rolling_252_sharpe_max": 3.1963561045019286,
+      "rolling_252_sharpe_std": 0.854771080794924
+    },
+    "cost_stress": [
+      {
+        "cost_multiple": 1,
+        "completed_trades": 13,
+        "start": "2007-01-03",
+        "end": "2026-09-02",
+        "sessions": 4948,
+        "years": 19.66324435318275,
+        "final_value_no_dca": 79061369.96768261,
+        "total_return": 78.45045804638704,
+        "cagr": 0.24919974511830256,
+        "annual_mean_return": 0.2437890375724754,
+        "annual_volatility": 0.20406914429190626,
+        "sharpe": 1.194639387636931,
+        "sortino": 1.7705004329684675,
+        "max_drawdown": -0.35543321607434997,
+        "calmar": 0.7011155228277107,
+        "ulcer_index": 0.07469459095347518,
+        "pain_ratio": 3.336248876086904,
+        "lake_ratio": 0.870250606305578,
+        "omega_zero": 1.2762626126137346,
+        "var_95": 0.0198576319352614,
+        "var_99": 0.035745940691057146,
+        "cvar_95": 0.030456164417214597,
+        "cvar_99": 0.04772061698238752
+      },
+      {
+        "cost_multiple": 2,
+        "completed_trades": 13,
+        "start": "2007-01-03",
+        "end": "2026-09-02",
+        "sessions": 4948,
+        "years": 19.66324435318275,
+        "final_value_no_dca": 78000284.75901502,
+        "total_return": 77.42340178667764,
+        "cagr": 0.24837341580277972,
+        "annual_mean_return": 0.24312371244763367,
+        "annual_volatility": 0.20405815857723872,
+        "sharpe": 1.1914432343346277,
+        "sortino": 1.7652674293767239,
+        "max_drawdown": -0.3560788353146892,
+        "calmar": 0.6975236693955049,
+        "ulcer_index": 0.07493050590259788,
+        "pain_ratio": 3.3147169208444978,
+        "lake_ratio": 0.8704527081649152,
+        "omega_zero": 1.2754088097777614,
+        "var_95": 0.01985763193526143,
+        "var_99": 0.035745940691057146,
+        "cvar_95": 0.03046201171647803,
+        "cvar_99": 0.04773008874697307
+      },
+      {
+        "cost_multiple": 5,
+        "completed_trades": 13,
+        "start": "2007-01-03",
+        "end": "2026-09-02",
+        "sessions": 4948,
+        "years": 19.66324435318275,
+        "final_value_no_dca": 74901779.16674426,
+        "total_return": 74.42116371965798,
+        "cagr": 0.24589766778468136,
+        "annual_mean_return": 0.24112971135773648,
+        "annual_volatility": 0.20403504314655063,
+        "sharpe": 1.181805378326811,
+        "sortino": 1.7495064381638044,
+        "max_drawdown": -0.3580118537354601,
+        "calmar": 0.6868422517830333,
+        "ulcer_index": 0.0756550709169194,
+        "pain_ratio": 3.250247006637715,
+        "lake_ratio": 0.8708569118835894,
+        "omega_zero": 1.272825785276219,
+        "var_95": 0.01985763193526151,
+        "var_99": 0.03574594069105725,
+        "cvar_95": 0.030479519062473336,
+        "cvar_99": 0.04775844764375854
+      },
+      {
+        "cost_multiple": 10,
+        "completed_trades": 13,
+        "start": "2007-01-03",
+        "end": "2026-09-02",
+        "sessions": 4948,
+        "years": 19.66324435318275,
+        "final_value_no_dca": 70008881.95673707,
+        "total_return": 69.67048784895357,
+        "cagr": 0.24178217288521142,
+        "annual_mean_return": 0.23781292577238164,
+        "annual_volatility": 0.20402918612145865,
+        "sharpe": 1.165582877102747,
+        "sortino": 1.7230147365934079,
+        "max_drawdown": -0.3612208112367029,
+        "calmar": 0.6693472949618481,
+        "ulcer_index": 0.07691494306220888,
+        "pain_ratio": 3.1435006418669227,
+        "lake_ratio": 0.8718674211802748,
+        "omega_zero": 1.2684998560437888,
+        "var_95": 0.019897262363992828,
+        "var_99": 0.0357459406910572,
+        "cvar_95": 0.030512582955545913,
+        "cvar_99": 0.04780552535469194
+      }
+    ],
+    "qqq_only_timing_metrics": {
+      "start": "2007-01-03",
+      "end": "2026-09-02",
+      "sessions": 4948,
+      "years": 19.66324435318275,
+      "final_value_no_dca": 56374985.393215664,
+      "total_return": 55.71900812389379,
+      "cagr": 0.22797114616530822,
+      "annual_mean_return": 0.22407852839507772,
+      "annual_volatility": 0.19129795264244268,
+      "sharpe": 1.1713587380305404,
+      "sortino": 1.7278008237517517,
+      "max_drawdown": -0.3026733979913597,
+      "calmar": 0.7531918816724554,
+      "ulcer_index": 0.05631192962526266,
+      "pain_ratio": 4.048363245272913,
+      "lake_ratio": 0.8528698464025869,
+      "omega_zero": 1.2710217932112737,
+      "var_95": 0.01889473689138297,
+      "var_99": 0.03410914752855586,
+      "cvar_95": 0.028695352784992825,
+      "cvar_99": 0.045178564665550106
+    },
+    "holding_corrections": {
+      "2016": "AAPL",
+      "2021": "AAPL",
+      "2023": "AAPL"
+    }
+  },
+  "planning_scenarios": [
+    {
+      "annual_return": 0.08,
+      "nominal_terminal_usd": 13613350.00347257,
+      "real_terminal_usd_at_3pct_inflation": 7537381.830175214
+    },
+    {
+      "annual_return": 0.1,
+      "nominal_terminal_usd": 17982499.847976822,
+      "real_terminal_usd_at_3pct_inflation": 9956474.165484212
+    },
+    {
+      "annual_return": 0.12,
+      "nominal_terminal_usd": 23856781.582066532,
+      "real_terminal_usd_at_3pct_inflation": 13208921.534909341
+    },
+    {
+      "annual_return": 0.15,
+      "nominal_terminal_usd": 36655253.916874215,
+      "real_terminal_usd_at_3pct_inflation": 20295125.357316922
+    },
+    {
+      "annual_return": 0.18,
+      "nominal_terminal_usd": 56518628.60887919,
+      "real_terminal_usd_at_3pct_inflation": 31292994.320598528
+    },
+    {
+      "annual_return": 0.2,
+      "nominal_terminal_usd": 75475199.84894945,
+      "real_terminal_usd_at_3pct_inflation": 41788788.19873141
+    }
+  ],
+  "backtest_score": {
+    "A_statistical_validity": {
+      "score": 23,
+      "max": 30
+    },
+    "B_risk_adjusted_performance": {
+      "score": 15,
+      "max": 25
+    },
+    "C_robustness_oos": {
+      "score": 4,
+      "max": 25
+    },
+    "D_trade_quality_consistency": {
+      "score": 18,
+      "max": 20
+    },
+    "raw_score": 60,
+    "caps": {
+      "fewer_than_30_completed_trades": 40,
+      "no_true_oos_walk_forward": 55
+    },
+    "final_score": 40,
+    "band": "Weak"
+  }
+}

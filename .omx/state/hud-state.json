@@ -1,5 +1,5 @@
 {
-  "last_turn_at": "2026-08-17T00:38:18.872Z",
-  "turn_count": 57,
-  "last_agent_output": "已完成更新及重跑。NASDAQ‑100 Top‑1 缯失時，依家會依序：\n\n`NASDAQ Top‑1 → SPY Top‑1 → cash`\n\nSPY fallback：\n\n- 1996–1998："
+  "last_turn_at": "2026-09-05T10:47:32.774Z",
+  "turn_count": 69,
+  "last_agent_output": "## 回測驗證報告\n\n### 回測評分：20 / 100 — 不建議採用\n\n| 評分項目 | 得分 | 滿分 |\n|---|---:|---:|\n| 統計有效性 | 7 | 30 |\n| 風險調整後表"
 }

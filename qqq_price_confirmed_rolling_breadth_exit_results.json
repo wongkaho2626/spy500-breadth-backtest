@@ -1,0 +1,449 @@
+{
+  "decision": "reject",
+  "idea_card": "/Users/wongkaho/Downloads/spy500_history/docs/research/price_confirmed_rolling_breadth_exit_idea.md",
+  "data": {
+    "start": "2002-01-02 00:00:00",
+    "end": "2026-09-01 00:00:00",
+    "bars": 6203,
+    "clean_forward_start": "2026-07-05",
+    "related_prior_trials": 4606,
+    "pre_2007_breadth": "synthetic daily splice"
+  },
+  "configuration": {
+    "price_return_lookback_sessions": 60,
+    "price_rise_threshold_pct": 3.0,
+    "rolling_breadth_window_sessions": 60,
+    "window_includes_signal_session": true,
+    "primary_breadth_drawdown_points": 20.0,
+    "breadth_cap": 60.0,
+    "sensitivity_drawdown_points": [
+      15.0,
+      20.0,
+      25.0
+    ],
+    "fill": "next-session open",
+    "change": "replace breadth component of bearish-divergence exit only"
+  },
+  "baseline_parity": {
+    "equity_max_absolute_difference": 0.0,
+    "trade_signatures_identical": true,
+    "open_trade_identical": true,
+    "passed": true
+  },
+  "benchmark": {
+    "name": "NDX price-index buy and hold",
+    "metrics": {
+      "start": "2002-01-02 00:00:00",
+      "end": "2026-09-01 00:00:00",
+      "observations": 6202,
+      "cagr": 0.1244822665892309,
+      "sharpe": 0.6207654276337998,
+      "max_drawdown": -0.5370615190845831,
+      "annual_volatility": 0.23323791114706294
+    }
+  },
+  "baseline": {
+    "metrics": {
+      "total_return": 93.67020315486944,
+      "cagr": 0.20262463738419223,
+      "annual_volatility": 0.18202290727770842,
+      "sharpe": 1.1069147065170206,
+      "sortino": 0.9414321138696737,
+      "calmar": 0.629567097689984,
+      "max_drawdown": -0.3218475649818189,
+      "ulcer_index": 0.05802928604320173,
+      "time_underwater": 0.8523295179751733,
+      "var_95_daily": -0.017694712621508717,
+      "cvar_95_daily": -0.027343071825895175,
+      "skewness": 0.312726033416434,
+      "excess_kurtosis": 9.851472761744567,
+      "jarque_bera_stat": 25135.43690184398,
+      "jarque_bera_p": 0.0,
+      "autocorrelation_lags_1_10": [
+        -0.09262436663455305,
+        0.008830742990787616,
+        -0.029847676817272673,
+        -0.007920548226475655,
+        -0.01359548665496869,
+        -0.035632062948545845,
+        0.007099959808478352,
+        -0.022358158675329993,
+        0.03248172979149029,
+        0.019782465379424536
+      ],
+      "effective_daily_observations": 5457.634362923728,
+      "mean_return_t_stat": 5.1512912519348575,
+      "psr_vs_zero": 0.9999998829431638,
+      "positive_months": 0.5304054054054054,
+      "rolling_sharpe_252_min": -1.2106701122948609,
+      "rolling_sharpe_252_max": 3.1198159847695157,
+      "rolling_sharpe_252_std": 0.7463243866283658,
+      "completed_trades": 17,
+      "win_rate": 0.9411764705882353,
+      "profit_factor": 50.21102079773837,
+      "expectancy": 0.31286969613214977,
+      "average_win": 0.3391791254299209,
+      "average_loss": -0.10808117263218783,
+      "payoff_ratio": 3.138188799858648,
+      "exposure": 0.7319039174592938,
+      "round_trips_per_year": 0.6893039520426287
+    },
+    "early_period": {
+      "start": "2002-01-02 00:00:00",
+      "end": "2013-12-31 00:00:00",
+      "observations": 3017,
+      "cagr": 0.17541907509173038,
+      "sharpe": 0.960116081731377,
+      "max_drawdown": -0.3218475649818189,
+      "annual_volatility": 0.186845900564084
+    },
+    "late_period": {
+      "start": "2014-01-02 00:00:00",
+      "end": "2026-09-01 00:00:00",
+      "observations": 3184,
+      "cagr": 0.22984501564161408,
+      "sharpe": 1.2578982768225828,
+      "max_drawdown": -0.2252864621295675,
+      "annual_volatility": 0.17736330561263136
+    },
+    "real_breadth_period": {
+      "start": "2007-01-03 00:00:00",
+      "end": "2026-09-01 00:00:00",
+      "observations": 4946,
+      "cagr": 0.22689384081978448,
+      "sharpe": 1.1793772475600997,
+      "max_drawdown": -0.3218475649818189,
+      "annual_volatility": 0.18884688090790308
+    },
+    "clean_forward_slice": {
+      "start": "2026-07-06 00:00:00",
+      "end": "2026-09-01 00:00:00",
+      "observations": 41,
+      "cagr": -0.147177277036472,
+      "sharpe": -0.6118808312447119,
+      "max_drawdown": -0.0882746115605273,
+      "annual_volatility": 0.2134088308958798
+    },
+    "statistical_diagnostics": {
+      "ljung_box_lag": 10,
+      "ljung_box_q": 81.07503586140339,
+      "ljung_box_p": 3.0894974716778227e-13,
+      "related_trials": 4606,
+      "expected_max_annual_sharpe": 0.7850639606845284,
+      "deflated_sharpe_probability": 0.9336119801415197,
+      "adf_return_stationarity": "not computed: statsmodels is unavailable; daily strategy returns, not price levels, are evaluated"
+    },
+    "trade_bootstrap": {
+      "completed_trades": 17,
+      "simulations": 5000,
+      "terminal_return_percentiles": {
+        "p05": 9.108858431354555,
+        "p50": 51.17089330591261,
+        "p95": 330.13060998618676
+      },
+      "max_drawdown_percentiles": {
+        "p05": -0.2044808053868269,
+        "p50": -0.10808117263218786,
+        "p95": 0.0
+      }
+    },
+    "exit_reason_counts": {
+      "bearish-divergence": 9,
+      "climax-top": 7,
+      "trailing-stop": 1
+    },
+    "open_trade": {
+      "entry_date": "2025-04-07 00:00:00",
+      "entry_price": 16771.77,
+      "current_date": "2026-09-01 00:00:00",
+      "current_price": 29077.22,
+      "return_pct": 73.19673064527078,
+      "max_drawdown_pct": 0.0,
+      "accumulated": 946702.0315486945,
+      "buy_trigger": "VIX"
+    },
+    "score": {
+      "A_statistical_validity": 23,
+      "B_risk_adjusted_performance": 11,
+      "C_robustness_oos": 25,
+      "D_trade_quality_consistency": 16,
+      "raw_score": 75,
+      "hard_cap": 40,
+      "cap_reason": "fewer than 30 independent completed trades",
+      "final_score": 40,
+      "band": "Weak"
+    }
+  },
+  "challenger": {
+    "metrics": {
+      "total_return": 43.12767113913347,
+      "cagr": 0.16597322174086648,
+      "annual_volatility": 0.1722663601020191,
+      "sharpe": 0.9793454816288446,
+      "sortino": 0.7928344005593724,
+      "calmar": 0.47454242648282485,
+      "max_drawdown": -0.3497542316100446,
+      "ulcer_index": 0.06350978706203743,
+      "time_underwater": 0.8752216669353539,
+      "var_95_daily": -0.016431348061128732,
+      "cvar_95_daily": -0.026024803178459222,
+      "skewness": 0.5025771955268304,
+      "excess_kurtosis": 12.133385144029688,
+      "jarque_bera_stat": 38237.45022865526,
+      "jarque_bera_p": 0.0,
+      "autocorrelation_lags_1_10": [
+        -0.0846658924750313,
+        -0.001993876545813208,
+        -0.016883911841410717,
+        -0.006674008132699736,
+        -0.0008424003574621661,
+        -0.027820275309867578,
+        0.0008805776860462748,
+        -0.015910886554513826,
+        0.022230363805606525,
+        0.026025227742571343
+      ],
+      "effective_daily_observations": 5647.051084477599,
+      "mean_return_t_stat": 4.6360329268421125,
+      "psr_vs_zero": 0.999998543503573,
+      "positive_months": 0.4594594594594595,
+      "rolling_sharpe_252_min": -1.2107154277647965,
+      "rolling_sharpe_252_max": 3.0751603956696827,
+      "rolling_sharpe_252_std": 0.7791080751679393,
+      "completed_trades": 21,
+      "win_rate": 0.9047619047619048,
+      "profit_factor": 16.06674315734392,
+      "expectancy": 0.19991439418587853,
+      "average_win": 0.23562329512666944,
+      "average_loss": -0.139320164751635,
+      "payoff_ratio": 1.6912361218256762,
+      "exposure": 0.6425922940512655,
+      "round_trips_per_year": 0.8514931172291297
+    },
+    "early_period": {
+      "start": "2002-01-02 00:00:00",
+      "end": "2013-12-31 00:00:00",
+      "observations": 3017,
+      "cagr": 0.1679410588110235,
+      "sharpe": 0.9367404091440266,
+      "max_drawdown": -0.3497542316100446,
+      "annual_volatility": 0.18413433380489602
+    },
+    "late_period": {
+      "start": "2014-01-02 00:00:00",
+      "end": "2026-09-01 00:00:00",
+      "observations": 3184,
+      "cagr": 0.1649203700966837,
+      "sharpe": 1.0346729802076273,
+      "max_drawdown": -0.22528749640661372,
+      "annual_volatility": 0.16025164341237375
+    },
+    "real_breadth_period": {
+      "start": "2007-01-03 00:00:00",
+      "end": "2026-09-01 00:00:00",
+      "observations": 4946,
+      "cagr": 0.18017294825190455,
+      "sharpe": 1.0260352808737212,
+      "max_drawdown": -0.3497542316100446,
+      "annual_volatility": 0.17701443438523443
+    },
+    "clean_forward_slice": {
+      "start": "2026-07-06 00:00:00",
+      "end": "2026-09-01 00:00:00",
+      "observations": 41,
+      "cagr": -0.14717727703647132,
+      "sharpe": -0.6118808312447149,
+      "max_drawdown": -0.08827461156052752,
+      "annual_volatility": 0.2134088308958799
+    },
+    "statistical_diagnostics": {
+      "ljung_box_lag": 10,
+      "ljung_box_q": 60.21740321175691,
+      "ljung_box_p": 3.2966773775337202e-09,
+      "related_trials": 4606,
+      "expected_max_annual_sharpe": 0.7678237654127831,
+      "deflated_sharpe_probability": 0.8437814048720507,
+      "adf_return_stationarity": "not computed: statsmodels is unavailable; daily strategy returns, not price levels, are evaluated"
+    },
+    "trade_bootstrap": {
+      "completed_trades": 21,
+      "simulations": 5000,
+      "terminal_return_percentiles": {
+        "p05": 3.872514144306148,
+        "p50": 23.550471004386857,
+        "p95": 150.55196145244201
+      },
+      "max_drawdown_percentiles": {
+        "p05": -0.44662638373721275,
+        "p50": -0.25610913686026016,
+        "p95": 0.0
+      }
+    },
+    "exit_reason_counts": {
+      "price-confirmed-rolling-breadth": 12,
+      "climax-top": 8,
+      "trailing-stop": 1
+    },
+    "open_trade": {
+      "entry_date": "2025-04-07 00:00:00",
+      "entry_price": 16771.77,
+      "current_date": "2026-09-01 00:00:00",
+      "current_price": 29077.22,
+      "return_pct": 73.19673064527078,
+      "max_drawdown_pct": 0.0,
+      "accumulated": 441276.71139133465,
+      "buy_trigger": "VIX"
+    },
+    "score": {
+      "A_statistical_validity": 23,
+      "B_risk_adjusted_performance": 8,
+      "C_robustness_oos": 18,
+      "D_trade_quality_consistency": 13,
+      "raw_score": 62,
+      "hard_cap": 40,
+      "cap_reason": "fewer than 30 independent completed trades",
+      "final_score": 40,
+      "band": "Weak"
+    }
+  },
+  "paired_inference": {
+    "annualized_mean_difference": -0.03277555158611966,
+    "newey_west_lags": 21,
+    "hac_t_stat": -2.5822892698887645,
+    "hac_two_sided_p": 0.009814728103258386,
+    "block_size": 21,
+    "bootstrap_simulations": 2000,
+    "bootstrap_95_interval_annualized": [
+      -0.058196289339465385,
+      -0.00860584087141619
+    ]
+  },
+  "wfa_efficiency": {
+    "baseline": 0.7632700508634167,
+    "challenger": 0.9053492524334127,
+    "interpretation": "fixed-rule historical-half pseudo-OOS only"
+  },
+  "sensitivity": {
+    "drawdown_15": {
+      "cagr": 0.10109962432939823,
+      "sharpe": 0.7482742835468973,
+      "calmar": 0.301165805916425,
+      "max_drawdown": -0.33569423335348325,
+      "completed_trades": 26,
+      "expectancy": 0.1100328724882259,
+      "round_trips_per_year": 1.0542295737122558
+    },
+    "drawdown_20": {
+      "cagr": 0.16597322174086648,
+      "sharpe": 0.9793454816288446,
+      "calmar": 0.47454242648282485,
+      "max_drawdown": -0.3497542316100446,
+      "completed_trades": 21,
+      "expectancy": 0.19991439418587853,
+      "round_trips_per_year": 0.8514931172291297
+    },
+    "drawdown_25": {
+      "cagr": 0.16914189885320963,
+      "sharpe": 0.9798327148619532,
+      "calmar": 0.4654328201016658,
+      "max_drawdown": -0.36340776057920343,
+      "completed_trades": 19,
+      "expectancy": 0.22615432289689702,
+      "round_trips_per_year": 0.7703985346358792
+    }
+  },
+  "cost_stress": {
+    "1x": {
+      "baseline_cagr": 0.20262463738419223,
+      "challenger_cagr": 0.16597322174086648,
+      "cagr_delta": -0.036651415643325747,
+      "paired_annualized_mean": -0.03277555158611966,
+      "paired_hac_t": -2.5822892698887645
+    },
+    "2x": {
+      "baseline_cagr": 0.20167940082321922,
+      "challenger_cagr": 0.16485681025512444,
+      "cagr_delta": -0.03682259056809478,
+      "paired_annualized_mean": -0.032950716739267534,
+      "paired_hac_t": -2.5964057338555784
+    },
+    "5x": {
+      "baseline_cagr": 0.1988435609179673,
+      "challenger_cagr": 0.16150752446239935,
+      "cagr_delta": -0.037336036455567934,
+      "paired_annualized_mean": -0.0334768882272736,
+      "paired_hac_t": -2.6380758849695507
+    },
+    "10x": {
+      "baseline_cagr": 0.1941161303306067,
+      "challenger_cagr": 0.1559241439736201,
+      "cagr_delta": -0.03819198635698662,
+      "paired_annualized_mean": -0.03435654502068596,
+      "paired_hac_t": -2.7051907864710367
+    }
+  },
+  "period_deltas": {
+    "early_period": {
+      "cagr": -0.007478016280706878,
+      "sharpe": -0.023375672587350405,
+      "max_drawdown": -0.027906666628225718,
+      "calmar": -0.06486898864984386
+    },
+    "late_period": {
+      "cagr": -0.06492464554493038,
+      "sharpe": -0.2232252966149555,
+      "max_drawdown": -1.0342770462301587e-06,
+      "calmar": -0.2881904312738621
+    },
+    "real_breadth_period": {
+      "cagr": -0.046720892567879924,
+      "sharpe": -0.15334196668637845,
+      "max_drawdown": -0.027906666628225718,
+      "calmar": -0.1898314096987388
+    }
+  },
+  "calendar_parity_split": {
+    "odd_years": {
+      "observations": 3018,
+      "annualized_mean_difference": -0.04372299128966018
+    },
+    "even_years": {
+      "observations": 3184,
+      "annualized_mean_difference": -0.02239886407817829
+    }
+  },
+  "guardrails": {
+    "baseline_parity": true,
+    "calmar_improved": false,
+    "max_drawdown_not_worse": false,
+    "cagr_within_two_points": false,
+    "expectancy_not_worse": false,
+    "turnover_guardrail": true,
+    "historical_halves_calmar_nonnegative": false,
+    "real_breadth_calmar_nonnegative": false,
+    "five_x_paired_return_positive": false,
+    "sensitivity_not_cliff_edge": false
+  },
+  "signal_counts": {
+    "raw_active_days": 144,
+    "raw_episode_onsets": 41,
+    "executed_replacement_sells": 12,
+    "all_executed_exit_reasons": {
+      "price-confirmed-rolling-breadth": 12,
+      "climax-top": 8,
+      "trailing-stop": 1
+    }
+  },
+  "current_signal": {
+    "date": "2026-09-01 00:00:00",
+    "active": false,
+    "ndx_return_60_pct": 0.4130867198939292,
+    "price_rise_3pct": false,
+    "breadth": 62.6,
+    "rolling_breadth_max_60": 72.75,
+    "breadth_drawdown_60_points": 10.149999999999999,
+    "baseline_position_open": true,
+    "challenger_position_open": true,
+    "earliest_fill": "next available session open"
+  }
+}

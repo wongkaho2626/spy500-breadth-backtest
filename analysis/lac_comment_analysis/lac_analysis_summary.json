@@ -1,0 +1,251 @@
+{
+  "profile": {
+    "lac_user_id": 734436,
+    "comment_count": 3556,
+    "archive_post_count": 31286,
+    "share_of_archive": 0.11366106245605063,
+    "character_count": 553913,
+    "median_comment_characters": 85,
+    "comments_at_least_200_characters": 796,
+    "comments_at_least_500_characters": 183,
+    "first_comment_utc": "2025-10-27T06:44:56+00:00",
+    "last_comment_utc": "2026-09-04T12:01:59+00:00",
+    "parts_with_comments": [
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      30,
+      31,
+      32,
+      33,
+      34
+    ],
+    "part_count": 29,
+    "missing_series_part": 29,
+    "duplicate_post_ids": 0,
+    "invalid_or_deleted_status_count": 0,
+    "blockquote_message_count": 2
+  },
+  "framework_mentions": [
+    {
+      "label": "估值 / valuation",
+      "message_count": 157
+    },
+    {
+      "label": "利潤率 / margin",
+      "message_count": 115
+    },
+    {
+      "label": "期權 / options",
+      "message_count": 104
+    },
+    {
+      "label": "週期 / cycle",
+      "message_count": 94
+    },
+    {
+      "label": "資本開支 / capex",
+      "message_count": 90
+    },
+    {
+      "label": "槓桿 / leverage",
+      "message_count": 70
+    },
+    {
+      "label": "TAM",
+      "message_count": 63
+    },
+    {
+      "label": "市佔率",
+      "message_count": 47
+    },
+    {
+      "label": "護城河 / moat",
+      "message_count": 47
+    },
+    {
+      "label": "FCF",
+      "message_count": 26
+    },
+    {
+      "label": "ROIC",
+      "message_count": 26
+    },
+    {
+      "label": "情景分析",
+      "message_count": 26
+    },
+    {
+      "label": "DCF",
+      "message_count": 24
+    },
+    {
+      "label": "貼現率",
+      "message_count": 16
+    },
+    {
+      "label": "被動投資 / 指數",
+      "message_count": 15
+    }
+  ],
+  "entity_mentions": [
+    {
+      "label": "NVDA / Nvidia",
+      "message_count": 139
+    },
+    {
+      "label": "TSMC / TSM",
+      "message_count": 138
+    },
+    {
+      "label": "OSCR",
+      "message_count": 74
+    },
+    {
+      "label": "SK Hynix",
+      "message_count": 73
+    },
+    {
+      "label": "GOOG / Google",
+      "message_count": 72
+    },
+    {
+      "label": "MRVL",
+      "message_count": 61
+    },
+    {
+      "label": "BESI",
+      "message_count": 47
+    },
+    {
+      "label": "ASML",
+      "message_count": 46
+    },
+    {
+      "label": "AVGO",
+      "message_count": 38
+    },
+    {
+      "label": "MSFT / Microsoft",
+      "message_count": 31
+    },
+    {
+      "label": "MELI",
+      "message_count": 29
+    },
+    {
+      "label": "Adyen",
+      "message_count": 26
+    },
+    {
+      "label": "Hermès / RMS",
+      "message_count": 22
+    },
+    {
+      "label": "AMD",
+      "message_count": 21
+    },
+    {
+      "label": "META",
+      "message_count": 19
+    },
+    {
+      "label": "AMZN / Amazon",
+      "message_count": 18
+    },
+    {
+      "label": "COHR",
+      "message_count": 13
+    },
+    {
+      "label": "1571 / 信邦控股",
+      "message_count": 11
+    },
+    {
+      "label": "LVMH",
+      "message_count": 10
+    },
+    {
+      "label": "CDI",
+      "message_count": 9
+    }
+  ],
+  "candidate_evidence": [
+    {
+      "rank": 1,
+      "ticker": "CDI (Paris)",
+      "company": "Christian Dior SE",
+      "price": "€390.20 (3 Sep 2026 close)",
+      "lac_signal": "同日直接買入；把原本預留給 Hermès 的資金轉投 CDI，理由是估值極低。",
+      "independent_check": "按 LVMH 持股作粗略穿透，CDI 對資產淨值折讓約 20–22%，年化 H1 盈利的穿透市盈率約 15 倍。",
+      "main_risk": "控股折讓可以長期存在；成交疏落、缺乏催化劑，並完全承受 LVMH／奢侈品周期。",
+      "confidence": "高",
+      "signal_date": "2026-09-04",
+      "source_url": "https://lihkg.com/thread/4152579/page/2?post=30"
+    },
+    {
+      "rank": 2,
+      "ticker": "ADYEN (Amsterdam)",
+      "company": "Adyen N.V.",
+      "price": "€1,043.00 (3 Sep 2026 close)",
+      "lac_signal": "H1 業績後仍判斷約低估 30%；多次稱其為歐洲 fintech 首選及 quality compounder。",
+      "independent_check": "H1 2026 淨收入按固定匯率升 21%，EBITDA margin 49%，FCF conversion 86%；現價略低於該留言當日收市價。",
+      "main_risk": "仍屬高估值增長股；兩宗收購令 2026 margin 約低一個百分點，整合和競爭可令估值假設落空。",
+      "confidence": "中高",
+      "signal_date": "2026-08-13",
+      "source_url": "https://lihkg.com/thread/4141975/page/24?post=588"
+    },
+    {
+      "rank": 3,
+      "ticker": "1571 (Hong Kong)",
+      "company": "信邦控股 / Xin Point Holdings",
+      "price": "約 HK$3.81 (4 Sep 2026 snapshot)",
+      "lac_signal": "賣出 0398 全數換入 1571，認為其 business model、ROIC 更好且更穩定；其後表示跌會再買。",
+      "independent_check": "2026 中期股息 HK$0.15；沿用上一個末期 HK$0.30 計，指示性股息率約 11.8%，手頭訂單約 RMB10.26bn。",
+      "main_risk": "H1 收入跌 6.3%、盈利跌 11.7%；股息非保證，流動性低，並有汽車客戶召回事件的不確定性。",
+      "confidence": "中高",
+      "signal_date": "2026-08-28",
+      "source_url": "https://lihkg.com/thread/4146837/page/26?post=647"
+    },
+    {
+      "rank": 4,
+      "ticker": "COHR (NYSE)",
+      "company": "Coherent Corp.",
+      "price": "$273.90 (4 Sep 2026 13:38 UTC)",
+      "lac_signal": "曾列明 $280、$240 已買，下一注 $200；另稱光通訊只選 COHR，估值合理但不會佔太多。",
+      "independent_check": "現價低於首個 $280 買入位；FY26 Q4 收入升 34%，GAAP gross margin 38.5%，non-GAAP EPS $1.74。",
+      "main_risk": "AI 光通訊預期、擴產及客戶集中度均高；GAAP P/E 很高，若增長或 margin 不達標，下行可很大。",
+      "confidence": "中",
+      "signal_date": "2026-08-19",
+      "source_url": "https://lihkg.com/thread/4141975/page/39?post=975"
+    }
+  ],
+  "method_notes": [
+    "Counts are message-level: one message counts once per concept/entity.",
+    "Mentions measure attention, not positive sentiment or recommendation strength.",
+    "Only comments inside the downloaded 33-thread series are included; this is not a site-wide LAC profile export.",
+    "Part 29 does not exist in the author chain/search index; the current part 34 was still active at collection time.",
+    "Two messages contain blockquotes, so quoted text can marginally affect term counts; candidate evidence was checked manually in context."
+  ]
+}

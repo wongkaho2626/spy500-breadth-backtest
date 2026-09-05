@@ -1,0 +1,35 @@
+{
+  "inputs": {
+    "cdi_price_eur": 390.2,
+    "cdi_reference_market_cap_eur": 73286000000.0,
+    "cdi_reference_price_eur": 406.0,
+    "lvmh_price_eur": 431.05,
+    "lvmh_shares_owned_by_cdi": 209031800,
+    "lvmh_h1_2026_group_net_profit_eur": 5700000000.0,
+    "cdi_lvmh_ownership_fraction": 0.4164,
+    "adyen_price_2026_08_13_eur": 1059.2,
+    "adyen_price_2026_09_03_eur": 1043.0,
+    "xinpoint_price_hkd": 3.81,
+    "xinpoint_latest_interim_dividend_hkd": 0.15,
+    "xinpoint_last_final_dividend_hkd": 0.3,
+    "cohr_price_usd": 273.9,
+    "cohr_lac_first_buy_level_usd": 280.0
+  },
+  "calculations": {
+    "cdi_implied_shares": 180507389.16256157,
+    "cdi_current_market_cap_eur": 70433983251.23152,
+    "cdi_gross_lvmh_stake_value_eur": 90103157390.0,
+    "cdi_gross_nav_discount": 0.21829616972946875,
+    "cdi_rough_annualized_lookthrough_pe": 14.837703130262636,
+    "adyen_change_since_lac_30pct_undervalued_comment": -0.015294561933534734,
+    "xinpoint_indicated_trailing_dividend_yield": 0.11811023622047243,
+    "cohr_discount_to_lac_first_buy_level": -0.021785714285714408
+  },
+  "assessment": "Share with caveats",
+  "caveats": [
+    "CDI calculation uses an exchange-derived share count and a previously disclosed LVMH shareholding; it is gross of holding-company debt, tax and minority adjustments.",
+    "Annualizing one half-year ignores seasonality and is only a reasonableness check, not a DCF.",
+    "Xin Point yield uses the latest interim plus the prior final dividend and is not a forward dividend forecast.",
+    "Market prices are snapshots and can change after the report timestamp."
+  ]
+}
