@@ -433,6 +433,8 @@ def print_sell_proximity(df: pd.DataFrame, open_trade: dict | None) -> None:
     # Look back exactly DIVERGENCE_WINDOW rows for the comparison point
     lookback_idx = max(0, len(df) - 1 - DIVERGENCE_WINDOW)
     past         = df.iloc[lookback_idx]
+    past_date    = df.index[lookback_idx]
+    comparison_sessions = len(df) - 1 - lookback_idx
 
     price_now      = last["price"]
     price_then     = past["price"]
@@ -456,6 +458,13 @@ def print_sell_proximity(df: pd.DataFrame, open_trade: dict | None) -> None:
 
     sep = "─" * 72
     print(f"\n── Sell signal proximity  (as of {last_date.strftime('%Y-%m-%d')}) ──\n")
+    print(f"  Comparison: {past_date:%Y-%m-%d} → {last_date:%Y-%m-%d} "
+          f"({comparison_sessions} trading sessions apart)")
+    if comparison_sessions < DIVERGENCE_WINDOW:
+        print(f"  Only {comparison_sessions} sessions available; "
+              f"the full {DIVERGENCE_WINDOW}-session lookback is unavailable.")
+    print(f"  NASDAQ 100 price: {price_then:,.2f} → {price_now:,.2f}")
+    print(f"  S&P 500 breadth: {breadth_then:.2f}% → {breadth_now:.2f}%\n")
     print(f"  {'Condition':<28} {'Current':>10}  {'Need':>10}  Progress")
     print(f"  {sep}")
 

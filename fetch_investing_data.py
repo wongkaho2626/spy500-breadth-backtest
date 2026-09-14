@@ -1,19 +1,12 @@
 """
 Fetch latest historical data and update local CSV files.
 
-All data now comes from Yahoo Finance (yfinance):
-  - NASDAQ100.csv  — ^NDX index prices
-  - SPX.csv        — ^GSPC index prices
-  - S5TH.csv       — % of S&P 500 stocks above their 200-day MA, computed
-                     from the constituents' prices (the investing.com page
-                     this used to scrape is now behind a Cloudflare
-                     challenge; computed values match the scraped series to
-                     within ~0.3 pts on overlap days)
-
-The S&P 500 constituent list is read from Wikipedia. Note the S5TH update
-needs an existing S5TH.csv — it extends the series incrementally and does
-not rebuild deep history (a full rebuild would need 200 trading days of
-constituent prices before every historical date).
+Index prices come from Yahoo Finance (^NDX and ^GSPC). S5TH comes only
+from Investing.com's published daily S5TH historical observations. Never
+substitute breadth computed from today's constituent list for this series.
+If the publisher blocks automated access, keep the existing data and report
+the failure. An exported daily S5TH CSV can be imported with --s5th-csv.
+Overlapping published rows replace previous values, including old estimates.
 
 Instruments updated by fetch_all_updates(): all three, followed by rebuilding
 breadth_daily.csv from the refreshed S5TH.csv.
@@ -22,13 +15,16 @@ same breadth_daily.csv rebuild.
 """
 from __future__ import annotations
 
+import argparse
 import io
-import logging
+import re
+import shutil
 from pathlib import Path
 
 import pandas as pd
-import requests
 import yfinance as yf
+from curl_cffi import requests
+from curl_cffi.requests.exceptions import RequestException
 
 from build_breadth_daily import build_breadth_daily
 
@@ -49,7 +45,8 @@ INSTRUMENTS = [
     },
     {
         "name": "S&P 500 Above 200-Day MA",
-        "source": "breadth-computed",
+        "source": "s5th",
+        "url": "https://www.investing.com/indices/sp-500-stocks-above-200-day-average-historical-data",
         "csv_file": DATA_DIR / "S5TH.csv",
     },
 ]
@@ -59,20 +56,6 @@ SPY_INSTRUMENTS = [i for i in INSTRUMENTS if i["name"] != "NASDAQ 100"]
 
 CSV_COLUMNS = ["Date", "Price", "Open", "High", "Low", "Vol.", "Change %"]
 
-SP500_CONSTITUENTS_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-MA_WINDOW = 200
-# Calendar days of price history to download so every new date has a full
-# 200-trading-day window behind it (~1.5 trading days per calendar day + buffer).
-BREADTH_LOOKBACK_DAYS = 400
-# Skip days where fewer than this many constituents have a valid 200-day MA
-# (guards against half-downloaded data producing a bogus percentage).
-MIN_VALID_CONSTITUENTS = 400
-# yfinance defaults to 2 * CPU count for a multi-symbol download.  On machines
-# with many cores that can exhaust resolver/curl resources and make valid
-# symbols look delisted.  Keep the initial download and its retry bounded.
-BREADTH_DOWNLOAD_THREADS = 4
-BREADTH_RETRY_THREADS = 2
-BREADTH_DOWNLOAD_TIMEOUT = 15
 
 
 def _read_existing(csv_file: Path) -> pd.DataFrame:
@@ -187,180 +170,97 @@ def _fetch_yfinance_instrument(instrument: dict, verbose: bool) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Computed breadth (% of S&P 500 above 200-day MA)
+# Actual published daily S5TH (no constituent-derived fallback)
 # ---------------------------------------------------------------------------
 
-def _sp500_tickers() -> list[str]:
-    """Current S&P 500 constituents from Wikipedia, in Yahoo symbol format."""
-    html = requests.get(
-        SP500_CONSTITUENTS_URL,
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=30,
-    ).text
-    symbols = pd.read_html(io.StringIO(html))[0]["Symbol"].tolist()
-    # Yahoo uses "-" where the official symbol has "." (BRK.B -> BRK-B)
-    return [s.replace(".", "-") for s in symbols]
 
-
-def _close_frame(data: pd.DataFrame | None, tickers: list[str]) -> pd.DataFrame:
-    """Return one Close column per downloaded ticker, regardless of yf shape."""
-    if data is None or data.empty:
-        return pd.DataFrame()
-
-    if isinstance(data.columns, pd.MultiIndex):
-        if "Close" not in data.columns.get_level_values(0):
-            return pd.DataFrame(index=data.index)
-        close = data["Close"]
-    elif "Close" in data.columns:
-        close = data["Close"]
-    else:
-        return pd.DataFrame(index=data.index)
-
-    if isinstance(close, pd.Series):
-        column = tickers[0] if len(tickers) == 1 else str(close.name)
-        close = close.rename(column).to_frame()
-    elif len(tickers) == 1 and len(close.columns) == 1:
-        close = close.rename(columns={close.columns[0]: tickers[0]})
-
-    close.columns = close.columns.map(str)
-    return close.sort_index()
-
-
-def _download_close_prices(
-    tickers: list[str], start: str, threads: int
-) -> pd.DataFrame:
-    """Download closes while replacing yfinance's noisy false-delisting log."""
-    if not tickers:
-        return pd.DataFrame()
-
-    # A scalar request gives yfinance's most reliable single-ticker path and
-    # makes a one-symbol retry explicit in tests and logs.
-    request: str | list[str] = tickers[0] if len(tickers) == 1 else tickers
-    yf_logger = logging.getLogger("yfinance")
-    old_level = yf_logger.level
-    try:
-        yf_logger.setLevel(logging.CRITICAL + 1)
-        data = yf.download(
-            request,
-            start=start,
-            auto_adjust=False,
-            progress=False,
-            threads=threads,
-            timeout=BREADTH_DOWNLOAD_TIMEOUT,
+def _validate_s5th_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """Normalize the publisher's daily OHLC rows, rejecting corrupt input."""
+    required = {"Date", "Price", "Open", "High", "Low"}
+    if frame.empty or not required.issubset(frame.columns):
+        raise ValueError("daily S5TH table must contain Date, Price, Open, High and Low")
+    rows = frame.copy()
+    dates = pd.to_datetime(rows["Date"], format="mixed", errors="raise")
+    if dates.isna().any() or dates.duplicated().any():
+        raise ValueError("daily S5TH dates must be present and unique")
+    prices = rows[["Price", "Open", "High", "Low"]].apply(
+        lambda column: pd.to_numeric(
+            column.astype(str).str.replace(",", "", regex=False), errors="raise"
         )
-    finally:
-        yf_logger.setLevel(old_level)
-    return _close_frame(data, tickers)
+    )
+    if not ((prices >= 0) & (prices <= 100)).all().all():
+        raise ValueError("S5TH OHLC values must be finite percentages between 0 and 100")
+    if (prices["High"] < prices.max(axis=1)).any() or (
+        prices["Low"] > prices.min(axis=1)
+    ).any():
+        raise ValueError("S5TH High/Low do not contain the published Open/Price")
+    rows["Date"] = dates.dt.strftime("%m/%d/%Y")
+    for column in prices:
+        rows[column] = prices[column].map(_fmt_price)
+    for column in ["Vol.", "Change %"]:
+        if column not in rows:
+            rows[column] = ""
+        rows[column] = rows[column].fillna("").astype(str)
+    return rows.loc[dates.sort_values(ascending=False).index, CSV_COLUMNS].reset_index(drop=True)
 
 
-def _merge_recovered_closes(
-    initial: pd.DataFrame, recovered: pd.DataFrame
-) -> pd.DataFrame:
-    """Fill failed initial histories with values obtained by a retry."""
-    combined = initial.copy()
-    for ticker in recovered.columns:
-        if ticker in combined.columns:
-            combined[ticker] = recovered[ticker].combine_first(combined[ticker])
-        else:
-            combined[ticker] = recovered[ticker]
-    return combined.sort_index()
+def _parse_s5th_html(html: str) -> pd.DataFrame:
+    """Read the actual S5TH daily history table, not a quote or related index."""
+    if not re.search(r"\bS5TH\b", html) or not re.search(r"\bDaily\b", html):
+        raise ValueError("page does not identify S5TH daily historical data")
+    for table in pd.read_html(io.StringIO(html)):
+        if {"Date", "Price", "Open", "High", "Low"}.issubset(table.columns):
+            return _validate_s5th_rows(table)
+    raise ValueError("published daily S5TH history table not found")
 
 
-def _fetch_breadth_instrument(instrument: dict, verbose: bool) -> int:
-    name = instrument["name"]
-    csv_file = instrument["csv_file"]
-
+def _save_s5th_rows(rows: pd.DataFrame, csv_file: Path, verbose: bool) -> int:
     existing = _read_existing(csv_file)
-    has_dates = not existing.empty and "Date" in existing.columns and existing["Date"].notna().any()
-    cutoff = existing["Date"].max() if has_dates else None
-
-    if cutoff is None:
-        print(f"  {name}: no existing {csv_file.name}; incremental breadth "
-              "computation needs a seed series, skipping")
-        return 0
-
+    old_dates = set(existing["Date"].dt.strftime("%m/%d/%Y")) if not existing.empty else set()
+    new_count = len(set(rows["Date"]) - old_dates)
+    # Refresh the entire available overlap: append-only would retain estimates
+    # that earlier versions of this updater incorrectly saved as actual S5TH.
+    _merge_and_save(rows, existing, csv_file)
     if verbose:
-        print(f"  {name}: latest in CSV = {cutoff.strftime('%m/%d/%Y')}")
+        print(f"  Actual daily S5TH: {new_count} new row(s); "
+              f"{len(rows) - new_count} overlapping row(s) refreshed; "
+              f"latest published date = {rows['Date'].iloc[0]}")
+    return new_count
 
+
+def _fetch_s5th_instrument(instrument: dict, verbose: bool) -> int:
+    """Fetch published S5TH or explicitly retain the last saved observations."""
     try:
-        tickers = _sp500_tickers()
-    except Exception as exc:
-        print(f"  {name}: failed to fetch constituent list ({exc}), skipping")
-        return 0
-    if len(tickers) < MIN_VALID_CONSTITUENTS:
-        print(f"  {name}: constituent list looks wrong ({len(tickers)} tickers), skipping")
-        return 0
-
-    start = (cutoff - pd.Timedelta(days=BREADTH_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
-    try:
-        close = _download_close_prices(tickers, start, BREADTH_DOWNLOAD_THREADS)
-    except Exception as exc:
-        print(f"  {name}: initial yfinance download failed ({exc}); retrying")
-        close = pd.DataFrame()
-
-    missing = [
-        ticker
-        for ticker in tickers
-        if ticker not in close.columns or not close[ticker].notna().any()
-    ]
-    if missing:
-        try:
-            recovered = _download_close_prices(missing, start, BREADTH_RETRY_THREADS)
-            close = _merge_recovered_closes(close, recovered)
-        except Exception as exc:
-            print(f"  {name}: retry failed ({exc})")
-
-    unresolved = [
-        ticker
-        for ticker in tickers
-        if ticker not in close.columns or not close[ticker].notna().any()
-    ]
-    if unresolved:
-        sample = ", ".join(unresolved[:8])
-        suffix = ", ..." if len(unresolved) > 8 else ""
-        print(
-            f"  {name}: {len(unresolved)} of {len(tickers)} ticker histories "
-            f"unavailable after retry ({sample}{suffix})"
+        response = requests.get(
+            # Reuse yfinance's HTTP client and its matching browser TLS/headers.
+            # A User-Agent header alone receives 403 from the publisher.
+            instrument["url"], impersonate="chrome", timeout=30
         )
-
-    if close.empty:
-        print(f"  {name}: yfinance returned no data, skipping")
+        response.raise_for_status()
+        rows = _parse_s5th_html(response.text)
+    except (RequestException, ValueError, KeyError) as exc:
+        existing = _read_existing(instrument["csv_file"])
+        latest = existing["Date"].max().strftime("%m/%d/%Y") if not existing.empty else "none"
+        print(f"  WARNING: actual daily S5TH unavailable ({exc}). "
+              f"Keeping saved data through {latest}; no calculated substitute. "
+              "Import a published daily export with "
+              "python3 fetch_investing_data.py --s5th-csv PATH.")
         return 0
+    return _save_s5th_rows(rows, instrument["csv_file"], verbose)
 
-    close = close.reindex(columns=tickers).sort_index()
-    ma = close.rolling(MA_WINDOW, min_periods=MA_WINDOW).mean()
-    valid = ma.notna() & close.notna()
-    valid_counts = valid.sum(axis=1)
-    pct = (close.gt(ma) & valid).sum(axis=1) / valid_counts * 100
-    pct = pct[valid_counts >= MIN_VALID_CONSTITUENTS]
-    change = pct.pct_change() * 100
 
-    new_dates = pct.index[pct.index > cutoff]
-    if len(new_dates) == 0:
-        if verbose:
-            print(f"  {name}: no new rows found")
-        return 0
+def import_s5th_csv(csv_file: Path, verbose: bool = True) -> int:
+    """Import an actual daily S5TH export obtained from the publisher."""
+    rows = _validate_s5th_rows(pd.read_csv(csv_file, encoding="utf-8-sig"))
+    return _save_s5th_rows(rows, INSTRUMENTS[2]["csv_file"], verbose)
 
-    # Only the closing value is computable (no intraday breadth path), so
-    # Open/High/Low repeat it; downstream scripts read Price only.
-    rows = [
-        {
-            "Date": date.strftime("%m/%d/%Y"),
-            "Price": f"{pct[date]:.2f}",
-            "Open": f"{pct[date]:.2f}",
-            "High": f"{pct[date]:.2f}",
-            "Low": f"{pct[date]:.2f}",
-            "Vol.": "",
-            "Change %": _fmt_change(change[date]),
-        }
-        for date in sorted(new_dates, reverse=True)
-    ]
 
-    new_df = pd.DataFrame(rows, columns=CSV_COLUMNS)
-    _merge_and_save(new_df, existing, csv_file)
-    if verbose:
-        print(f"  {name}: added {len(rows)} new row(s)")
-    return len(rows)
+def _publish_breadth_files() -> None:
+    """Keep the website's static breadth files in sync with the Python input."""
+    destination = DATA_DIR / "webapp" / "nextjs" / "public" / "data"
+    if destination.is_dir():
+        for name in ["S5TH.csv", "breadth_daily.csv"]:
+            shutil.copyfile(DATA_DIR / name, destination / name)
 
 
 # ---------------------------------------------------------------------------
@@ -369,7 +269,7 @@ def _fetch_breadth_instrument(instrument: dict, verbose: bool) -> int:
 
 _FETCHERS = {
     "yfinance": _fetch_yfinance_instrument,
-    "breadth-computed": _fetch_breadth_instrument,
+    "s5th": _fetch_s5th_instrument,
 }
 
 
@@ -383,18 +283,28 @@ def _fetch_instruments(instruments: list[dict], verbose: bool) -> None:
 
 def fetch_all_updates(verbose: bool = True) -> None:
     if verbose:
-        print("Fetching latest data from Yahoo Finance...")
+        print("Fetching index prices from Yahoo Finance and actual daily S5TH from Investing.com...")
     _fetch_instruments(INSTRUMENTS, verbose)
     build_breadth_daily(verbose=verbose)
+    _publish_breadth_files()
 
 
 def fetch_spy_updates(verbose: bool = True) -> None:
     """Fetch SPX + S&P 500 breadth only (no NASDAQ 100)."""
     if verbose:
-        print("Fetching latest S&P 500 data from Yahoo Finance...")
+        print("Fetching S&P 500 prices from Yahoo Finance and actual daily S5TH from Investing.com...")
     _fetch_instruments(SPY_INSTRUMENTS, verbose)
     build_breadth_daily(verbose=verbose)
+    _publish_breadth_files()
 
 
 if __name__ == "__main__":
-    fetch_all_updates(verbose=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--s5th-csv", type=Path, help="Import a published DAILY S5TH CSV export only")
+    args = parser.parse_args()
+    if args.s5th_csv:
+        import_s5th_csv(args.s5th_csv)
+        build_breadth_daily(verbose=True)
+        _publish_breadth_files()
+    else:
+        fetch_all_updates(verbose=True)
