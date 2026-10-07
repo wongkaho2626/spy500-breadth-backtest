@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from pathlib import Path
 
-import spy_backtest as qqq_calendar
+import qqq_backtest as qqq_calendar
 
 DATA_DIR      = Path(__file__).parent
 NDX_FILE      = DATA_DIR / "NASDAQ100.csv"
@@ -342,7 +342,9 @@ def load_stock_prices(tickers: set[str], col: str = "Close") -> dict[str, pd.Ser
             print(f"  [WARNING] No price file for {ticker}, skipping.")
             continue
         df = pd.read_csv(path, index_col=0)
-        df.index = pd.to_datetime(df.index, format='ISO8601', utc=True).tz_localize(None)
+        # Yahoo's appended rows include a market timezone. Match by trading
+        # date, since the QQQ fill calendar uses date-only timestamps.
+        df.index = pd.to_datetime(df.index, format='mixed', utc=True).normalize().tz_localize(None)
         use = col if col in df.columns else ("Close" if "Close" in df.columns else df.columns[0])
         prices[ticker] = df[use].dropna()
     return prices
@@ -612,8 +614,8 @@ def run_strategy(
 def load_exact_qqq_calendar() -> tuple[
     pd.DataFrame, pd.Series, list[dict], dict | None
 ]:
-    """Load the canonical QQQ engine used by qqq_backtest.py without import I/O."""
-    qqq_data = qqq_calendar.load_data(qqq_calendar.NDX_BENCHMARK_FILE)
+    """Load QQQ's own data and trade calendar with its current signal rules."""
+    qqq_data = qqq_calendar.load_data()
     equity, trades, open_trade = qqq_calendar.run_strategy(
         qqq_data,
         cooldown_days=qqq_calendar.COOLDOWN_DAYS,

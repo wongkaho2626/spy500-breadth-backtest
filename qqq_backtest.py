@@ -1,27 +1,13 @@
 """
 NASDAQ 100 Breadth Strategy — breadth data start to present
 
-BUY  (while OUT): either entry path —
-                  • Washout: breadth200 < 26% AND at least 1 of 2 vote:
-                      · VIX > 30  (fear spike / panic bottom)
-                      · price > MA200  (uptrend pullback — safe to buy immediately)
-                  • Trend re-entry: price closes back above MA200 (fresh cross),
-                    allowed when EITHER the previous exit was a climax-top (a
-                    premature froth shakeout) OR price is back above the price we
-                    last sold at (the market proved the exit premature — e.g. the
-                    false 2004 divergence before the 2004–07 run). Recrosses that
-                    are still below the prior exit stay filtered: failed bounces
-                    in a real downtrend (e.g. the 2022 whipsaws). Lifts return to
-                    101x (Sharpe 1.12, DD -32%, time-in-market ~73%).
+BUY  (while OUT): breadth200 < 26% AND VIX > 30.
 SELL (while IN):  any of —
                   • Bearish divergence: price rose ≥ 3% over 60 days
-                    while breadth200 fell ≥ 20 pts AND breadth200 < 60%
-                  • Climax top: within 10 days, price was extended ≥ 5% above
-                    its 10-day MA AND MACD(12,26,9) flipped bearish
+                    while breadth200 fell ≥ 20 pts and breadth200 is below
+                    the configured cap, with VIX above the configured sell
+                    threshold on the same signal day
                   • Trailing stop: price 25% below the high since entry
-                  (both add-on exits walk-forward validated on the
-                   2002–2013 / 2014–2026 splits — see qqq_signal_combo_search.py
-                   and qqq_improve.py)
 """
 import argparse
 import numpy as np
@@ -47,15 +33,16 @@ BREADTH_DAILY_MIN  = "2007-01-01"  # fallback cutoff when daily file is absent
 VIX_FILE     = DATA_DIR / "VIX.csv"
 
 # ── Buy thresholds ────────────────────────────────────────────────────────────
-BUY_B200_THRESH = 26.0   # breadth200 must be below this
-VIX_BUY_THRESH  = 30.0   # VIX vote: fear spike (VIX > 30)
-MA200_WINDOW    = 200     # MA200 vote: price above 200-day moving average
+BUY_B200_THRESH = 25.0   # breadth200 must be below this
+VIX_BUY_THRESH  = 20.0   # VIX vote: fear spike (VIX > 30)
+MA200_WINDOW    = 200     # MA200 feature retained for independent research
 
 # ── Sell — bearish divergence ─────────────────────────────────────────────────
-DIVERGENCE_WINDOW       = 60    # trading days lookback
-DIVERGENCE_PRICE_RISE   = 3.0   # % price rise over window
-DIVERGENCE_BREADTH_FALL = 20.0  # pts breadth200 drop over window
-DIVERGENCE_BREADTH_CAP  = 60.0  # breadth200 must be below this
+DIVERGENCE_WINDOW       = 40    # trading days lookback
+DIVERGENCE_PRICE_RISE   = 4.0   # % price rise over window
+DIVERGENCE_BREADTH_FALL = 15.0  # pts breadth200 drop over window
+DIVERGENCE_BREADTH_CAP  = 80.0  # breadth200 must be below this
+VIX_SELL_THRESH         = 15  # same-day VIX close must exceed this
 
 # ── Sell — climax top (extension + momentum break within a window) ───────────
 EXT10_PCT           = 5.0   # % above 10-day MA that counts as "extended"
@@ -78,7 +65,7 @@ INITIAL_CAPITAL = 10_000.0
 COMMISSION      = 1.0
 SLIPPAGE        = 0.0005
 START_YEAR      = None   # e.g. 2010 to begin backtest on Jan 1 of that year; None = full history
-COOLDOWN_DAYS   = 15     # calendar days to wait after a sell before the next buy is allowed
+COOLDOWN_DAYS   = 30     # calendar days to wait after a sell before the next buy is allowed
 
 
 def _parse_price(s: pd.Series) -> pd.Series:
@@ -121,16 +108,26 @@ def load_data() -> pd.DataFrame:
     # Only keep rows where breadth200 data is present (strategy starts here)
     merged = merged[merged["breadth"].notna()]
 
+    # A stale VIX close cannot establish whether the new divergence gate fires.
+    latest_vix_date = vix.index.max()
+    if merged.index[-1] > latest_vix_date + pd.Timedelta(days=7):
+        raise ValueError(
+            f"VIX.csv ends on {latest_vix_date.date()}, too far before the "
+            f"latest breadth session {merged.index[-1].date()}"
+        )
+
+    merged["vix_observed"] = merged["vix"].notna()
     merged["vix"]   = merged["vix"].ffill()
     merged["ma200"] = merged["price"].rolling(MA200_WINDOW).mean()
 
-    # Vote gate: at least 1 of [VIX > 30, price > MA200] must be True
-    # NaN → True (don't restrict when data is missing)
+    # Canonical washout entries use VIX alone. Keep the MA200 vote as a feature
+    # for independent research modules that still compare the old entry rule.
+    # NaN → True retains the prior missing-VIX behavior.
     merged["vix_vote"]   = merged["vix"].apply(
         lambda v: True if pd.isna(v) else v > VIX_BUY_THRESH)
     merged["ma200_vote"] = merged.apply(
         lambda r: True if pd.isna(r["ma200"]) else r["price"] > r["ma200"], axis=1)
-    merged["vote_gate"]  = merged["vix_vote"] | merged["ma200_vote"]
+    merged["vote_gate"]  = merged["vix_vote"]
 
     # Pre-compute divergence components
     pp = merged["price"].shift(DIVERGENCE_WINDOW)
@@ -138,22 +135,16 @@ def load_data() -> pd.DataFrame:
     merged["price_rose"]   = ((merged["price"] - pp) / pp * 100 >= DIVERGENCE_PRICE_RISE).fillna(False)
     merged["breadth_fell"] = ((bp - merged["breadth"]) >= DIVERGENCE_BREADTH_FALL).fillna(False)
 
-    # Pre-compute climax-top components: price extended ≥ EXT10_PCT above its
-    # 10-day MA, and MACD(12,26,9) histogram flipping negative. The exit fires
-    # when both occur within CLIMAX_VOTE_WINDOW days of each other AND after
-    # the entry date (tracked in run_strategy, so a pre-entry climax can't
-    # trigger an immediate sell).
+    # Retained for independent research modules; the canonical strategy no
+    # longer uses these climax-top features for exits.
     close = merged["price"]
     macd = close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
     hist = macd - macd.ewm(span=9, adjust=False).mean()
     merged["macd_cross"] = ((hist < 0) & (hist.shift(1) >= 0)).fillna(False)
     merged["ext10"] = (close / close.rolling(10).mean() - 1 >= EXT10_PCT / 100).fillna(False)
 
-    # Trend re-entry: price closes back above MA200 after being below it. This
-    # lets the strategy rejoin a bull market it was shaken out of (e.g. 2003–07),
-    # instead of waiting idle for another breadth washout that only comes in a
-    # crash. A *fresh* cross (not merely price > MA200) is required so a climax /
-    # divergence exit near a top isn't immediately undone.
+    # Retained for independent research modules; the canonical strategy no
+    # longer uses this fresh MA200 recross as an entry signal.
     merged["ma200_recross"] = (
         (close > merged["ma200"]) & (close.shift(1) <= merged["ma200"].shift(1))
     ).fillna(False)
@@ -175,7 +166,8 @@ def _days_str(days: int) -> str:
 
 def run_strategy(df: pd.DataFrame, cooldown_days: int = 0,
                  execution_lag: int = EXECUTION_LAG,
-                 fill_on: str = FILL_PRICE) -> tuple[pd.Series, list[dict], dict | None]:
+                 fill_on: str = FILL_PRICE,
+                 require_vix_for_divergence: bool = True) -> tuple[pd.Series, list[dict], dict | None]:
     """
     Signals are computed on the CLOSE (all indicators are close-based); a signal
     detected on day t is filled `execution_lag` bars later.
@@ -185,6 +177,8 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0,
     execution_lag = 1 → next trading day (realistic).
     fill_on = "open"  → fill at the fill-bar OPEN (needs lag ≥ 1, else look-ahead).
     fill_on = "close" → fill at the fill-bar close.
+    require_vix_for_divergence = False reproduces the prior ungated sell rule
+    for research comparisons; the canonical default is True.
 
     Marking to market always uses the close. Only the transaction price/timing
     changes; the signal logic is identical to the same-day version.
@@ -196,12 +190,9 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0,
     eff_entry      = raw_entry = 0.0
     entry_date     = None
     trade_low = trade_high = 0.0
-    macd_age = ext_age = 10**9
     buy_trigger    = None
     portfolio      = INITIAL_CAPITAL
     cooldown_until: pd.Timestamp | None = None
-    last_sell_reason: str | None = None
-    last_exit_price: float | None = None
     trades: list[dict] = []
     values: dict = {}
 
@@ -214,8 +205,8 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0,
     def execute_due(i, date, fill_price):
         """Fill a pending order whose fill bar is today, at fill_price. True if filled."""
         nonlocal position, eff_entry, raw_entry, entry_date, trade_low, trade_high
-        nonlocal macd_age, ext_age, buy_trigger, portfolio, cooldown_until
-        nonlocal last_sell_reason, last_exit_price, pending
+        nonlocal buy_trigger, portfolio, cooldown_until
+        nonlocal pending
         if pending is None or pending["fill_at"] != i:
             return False
         if pending["action"] == "BUY" and position == "OUT":
@@ -224,7 +215,6 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0,
             raw_entry  = fill_price
             entry_date = date
             trade_low  = trade_high = fill_price
-            macd_age = ext_age = 10**9   # climax ages reset (days since firing AFTER entry)
             buy_trigger = pending["trigger"]
             position = "IN"
             pending = None
@@ -235,8 +225,6 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0,
             portfolio *= (1 + gross_ret)
             portfolio -= COMMISSION
             cooldown_until   = date + pd.Timedelta(days=cooldown_days)
-            last_sell_reason = pending["reason"]
-            last_exit_price  = fill_price
             trades.append({
                 "entry_date":       entry_date,
                 "exit_date":        date,
@@ -277,41 +265,26 @@ def run_strategy(df: pd.DataFrame, cooldown_days: int = 0,
                 vote_gate      = bool(row["vote_gate"])
                 cooldown_ok    = cooldown_until is None or date > cooldown_until
                 washout_buy = not pd.isna(breadth) and breadth < BUY_B200_THRESH and vote_gate
-                # Trend re-entry: on a fresh MA200 recross, rejoin the trend when
-                # either
-                #   • the last exit was a climax-top (a premature "froth" shakeout a
-                #     bull recovers from), or
-                #   • price is back above the price we last sold at — the market has
-                #     proven the exit premature by trading higher (e.g. the false
-                #     2004 divergence that preceded the 2004–07 run).
-                # Recrosses that are still below the prior exit stay filtered: those
-                # are failed bounces in a real downtrend (e.g. the 2022 whipsaws).
-                recross_ok = last_sell_reason == "climax-top" or (
-                    last_exit_price is not None and price > last_exit_price)
-                trend_buy   = bool(row["ma200_recross"]) and recross_ok
-                do_buy = cooldown_ok and (washout_buy or trend_buy)
-                if do_buy and i + execution_lag < n:
-                    if washout_buy:
-                        trigger = (("VIX" if row["vix_vote"] else "") +
-                                   ("+" if row["vix_vote"] and row["ma200_vote"] else "") +
-                                   ("MA200" if row["ma200_vote"] else ""))
-                    else:
-                        trigger = "MA200-recross"
+                if cooldown_ok and washout_buy and i + execution_lag < n:
+                    trigger = (("VIX" if row["vix_vote"] else "") +
+                               ("+" if row["vix_vote"] and row["ma200_vote"] else "") +
+                               ("MA200" if row["ma200_vote"] else ""))
                     pending = {"action": "BUY", "fill_at": i + execution_lag,
                                "trigger": trigger}
 
             elif position == "IN":
                 trade_low  = min(trade_low, price)
                 trade_high = max(trade_high, price)
-                macd_age = 0 if bool(row["macd_cross"]) else macd_age + 1
-                ext_age  = 0 if bool(row["ext10"])      else ext_age + 1
-                bearish_div = price_rose and breadth_fell and breadth < DIVERGENCE_BREADTH_CAP
-                climax      = (macd_age < CLIMAX_VOTE_WINDOW) and (ext_age < CLIMAX_VOTE_WINDOW)
+                bearish_div = (
+                    price_rose and breadth_fell and breadth < DIVERGENCE_BREADTH_CAP
+                    and (not require_vix_for_divergence or (
+                        bool(row.get("vix_observed", pd.notna(row["vix"])))
+                        and row["vix"] > VIX_SELL_THRESH
+                    ))
+                )
                 trail_hit   = price <= trade_high * (1 - TRAILING_STOP_PCT / 100)
                 if bearish_div:
                     reason = "bearish-divergence"
-                elif climax:
-                    reason = "climax-top"
                 elif trail_hit:
                     reason = "trailing-stop"
                 else:
@@ -423,7 +396,7 @@ def print_trades(trades: list[dict], open_trade: dict | None = None) -> None:
 
 
 def print_sell_proximity(df: pd.DataFrame, open_trade: dict | None) -> None:
-    """Show how close the current position is to triggering the sell signal."""
+    """Show how close the current position is to a bearish-divergence exit."""
     if open_trade is None:
         return
 
@@ -443,8 +416,10 @@ def print_sell_proximity(df: pd.DataFrame, open_trade: dict | None) -> None:
     breadth_now    = last["breadth"]
     breadth_then   = past["breadth"]
     breadth_fall   = breadth_then - breadth_now   # positive = fell
+    vix_now        = last["vix"]
 
     cap_ok = breadth_now < DIVERGENCE_BREADTH_CAP
+    vix_met = bool(last.get("vix_observed", pd.notna(vix_now))) and vix_now > VIX_SELL_THRESH
 
     def bar(value: float, threshold: float, invert: bool = False) -> str:
         """20-char progress bar toward the threshold."""
@@ -454,7 +429,7 @@ def print_sell_proximity(df: pd.DataFrame, open_trade: dict | None) -> None:
 
     price_met   = price_rise_pct >= DIVERGENCE_PRICE_RISE
     breadth_met = breadth_fall   >= DIVERGENCE_BREADTH_FALL
-    all_met     = price_met and breadth_met and cap_ok
+    all_met     = price_met and breadth_met and cap_ok and vix_met
 
     sep = "─" * 72
     print(f"\n── Sell signal proximity  (as of {last_date.strftime('%Y-%m-%d')}) ──\n")
@@ -486,9 +461,14 @@ def print_sell_proximity(df: pd.DataFrame, open_trade: dict | None) -> None:
           f"{breadth_now:>+9.1f}%   {'<' + str(DIVERGENCE_BREADTH_CAP) + '%':>9}   "
           f"{'✓ below cap' if cap_ok else '✗ above cap':32}  {status}")
 
+    # 4. Same-day VIX close
+    status = "✓ MET" if vix_met else "VIX must rise above gate"
+    print(f"  {'VIX close > gate':<28} "
+          f"{vix_now:>10.2f}  {'>' + str(VIX_SELL_THRESH):>10}  {status}")
+
     print(f"  {sep}")
-    verdict = "YES — sell signal ACTIVE" if all_met else "NO  — not yet triggered"
-    print(f"  All 3 conditions met: {verdict}\n")
+    verdict = "YES — divergence sell ACTIVE" if all_met else "NO — not yet triggered"
+    print(f"  All 4 divergence conditions met: {verdict}\n")
 
 
 def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
@@ -499,12 +479,10 @@ def plot_results(df, strategy, benchmark, trades, open_trade) -> None:
     ax1, ax2, ax3 = axes
 
     fig.suptitle(
-        "NASDAQ 100 Breadth Strategy  (+Voting Gate +Trend Re-entry)\n"
-        f"BUY: breadth200 < {BUY_B200_THRESH}%  AND  (VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW})  [≥1 of 2]"
-        f"   OR  price re-crosses above MA{MA200_WINDOW} (after climax-top exit or back above prior exit)\n"
+        "NASDAQ 100 Breadth Strategy  (VIX Washout Entry)\n"
+        f"BUY: breadth200 < {BUY_B200_THRESH}%  AND VIX > {VIX_BUY_THRESH}\n"
         f"SELL: divergence (price ≥{DIVERGENCE_PRICE_RISE}%/{DIVERGENCE_WINDOW}d + breadth200 "
-        f"-{DIVERGENCE_BREADTH_FALL}pts < {DIVERGENCE_BREADTH_CAP}%)  OR  "
-        f"climax top (≥{EXT10_PCT:.0f}% above 10dMA + MACD cross)  OR  "
+        f"-{DIVERGENCE_BREADTH_FALL}pts < {DIVERGENCE_BREADTH_CAP}% + VIX >{VIX_SELL_THRESH})  OR  "
         f"trailing stop ({TRAILING_STOP_PCT:.0f}%)\n"
         f"Starting capital: ${INITIAL_CAPITAL:,.0f}",
         fontsize=9, fontweight="bold"
@@ -602,13 +580,10 @@ def main() -> None:
         df = df[df.index.year >= args.start_year]
     print(f"Date range  : {df.index[0].date()} → {df.index[-1].date()} ({len(df)} trading days)")
     print(f"Buy signal  : breadth200 < {BUY_B200_THRESH}%  (washout entry)")
-    print(f"Vote gate   : VIX > {VIX_BUY_THRESH} OR price > MA{MA200_WINDOW}  (≥1 of 2 must agree)")
-    print(f"           OR trend re-entry: price re-crosses above MA{MA200_WINDOW} after a climax-top exit")
-    print("              or when it re-crosses back above the prior exit price")
+    print(f"Vote gate   : VIX > {VIX_BUY_THRESH}")
     print(f"Sell signal : price rose ≥{DIVERGENCE_PRICE_RISE}% AND breadth200 fell ≥{DIVERGENCE_BREADTH_FALL}pts")
     print(f"              over {DIVERGENCE_WINDOW} days, while breadth200 < {DIVERGENCE_BREADTH_CAP}%")
-    print(f"           OR climax top: ≥{EXT10_PCT:.0f}% above 10d MA + MACD bearish cross "
-          f"(within {CLIMAX_VOTE_WINDOW}d)")
+    print(f"              AND same-day VIX > {VIX_SELL_THRESH}")
     print(f"           OR trailing stop: {TRAILING_STOP_PCT:.0f}% below high since entry")
     print(f"Costs       : ${COMMISSION:.0f} commission + {SLIPPAGE*100:.2f}% slippage per side")
     print(f"Cooldown    : {args.cooldown_days} calendar days after each sell")
